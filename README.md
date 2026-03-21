@@ -70,7 +70,3 @@ bb *is* the Möbius seed — a content-addressed language where timestamps make 
 - **Non-English-based programming languages** — [Wikipedia overview](https://en.wikipedia.org/wiki/Non-English-based_programming_languages)
 - **Content-addressed storage** — Git, IPFS, Nix
 - **Multilingual programming** — Racket's #lang system, Babylonian programming
-
----
-
-*"The limits of my language mean the limits of my world."* — Ludwig Wittgenstein
