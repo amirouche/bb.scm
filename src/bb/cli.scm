@@ -27,6 +27,7 @@
   ;; Commands:
   ;;   bb run (name|hash) [args...]   — evaluate a combiner
   ;;   bb add name file               — parse, store, bind (wip)
+  ;;   bb add --check <combiner> <check> — register check for combiner
   ;;   bb commit [name... | --all]    — promote wip to committed
   ;;   bb edit (name|hash)            — open in $EDITOR, re-add on save
   ;;   bb diff name1 name2            — structural comparison
@@ -61,6 +62,7 @@
       (display "Usage:\n")
       (display "  bb add [--derived-from=<ref>] [--relation=<type>] <file|->\n")
       (display "                                            Parse, normalize, store, and bind\n")
+      (display "  bb add --check <combiner> <check>         Register check for combiner\n")
       (display "  bb caller <ref>                         Show reverse dependency DAG\n")
       (display "  bb check <ref>                          Run all checks for ref and its dependencies\n")
       (display "  bb commit [name... | --all]             Promote staged combiners to committed\n")
@@ -464,7 +466,41 @@
     (lambda (arguments)
       (when (null? arguments)
         (display "bb add: usage: bb add [--derived-from=<ref>] [--relation=<type>] <file|->\n" (current-error-port))
+        (display "       bb add --check <combiner> <check>\n" (current-error-port))
         (exit 1))
+      ;; --check mode: associate an existing check with an existing combiner
+      (when (string=? (car arguments) "--check")
+        (let ((rest (cdr arguments)))
+          (when (< (length rest) 2)
+            (display "bb add --check: usage: bb add --check <combiner> <check>\n"
+                     (current-error-port))
+            (exit 1))
+          (let* ((combiner-ref (car rest))
+                 (check-ref (cadr rest))
+                 (root (store-find-root (current-directory)))
+                 (name-index (store-build-name-index root))
+                 (combiner-hash
+                  (let-values (((h l m) (resolve-ref name-index root combiner-ref))) h))
+                 (check-hash
+                  (let-values (((h l m) (resolve-ref name-index root check-ref))) h))
+                 (existing-checks (store-load-checks root combiner-hash))
+                 (author (store-config-author root)))
+            (if (member check-hash existing-checks)
+                (begin
+                  (display "already registered: ")
+                  (display check-ref)
+                  (display " is a check of ")
+                  (display combiner-ref)
+                  (display "\n"))
+                (let ((new-checks (append existing-checks (list check-hash))))
+                  (store-record-wip-lineage! root combiner-hash author "add"
+                                             #f #f new-checks)
+                  (display "check added: ")
+                  (display check-ref)
+                  (display " -> ")
+                  (display combiner-ref)
+                  (display "\n"))))
+          (exit 0)))
       ;; Extract --derived-from=<ref> and --relation=<type> flags
       (let* ((derived-from-raw
               (let loop ((remaining arguments))
@@ -955,8 +991,9 @@
                                                  (condition-message exn)
                                                  "error"))
                                     (newline)))
-                          (let ((value (load-combiner-value root check-hash hash->name environment)))
-                            (mobius-apply value mobius-nil environment)
+                          (let ((check-fn (load-combiner-value root check-hash hash->name environment))
+                                (combiner-val (load-combiner-value root (car entry) hash->name environment)))
+                            (mobius-apply check-fn (cons combiner-val mobius-nil) environment)
                             (set! passed (+ passed 1))
                             (display "PASS  ")
                             (display combiner-name)
@@ -1226,19 +1263,49 @@
                   (loop (cdr remaining) mains checks)))))))
 
   ;; Run each ~check-* combiner from the evaluated environment.
+  ;; Each check receives its corresponding main combiner as argument.
+  ;; Match by name convention (~check-foo -> foo, ~check-foo-00 -> foo),
+  ;; falling back to the sole main define when there's exactly one.
   ;; Returns list of (name . #t) or (name . error-string).
   (define edit-run-checks
-    (lambda (check-defines final-environment)
-      (map (lambda (expression)
-             (let ((name (cadr expression)))
-               (guard (exn (#t (cons name
-                                     (if (message-condition? exn)
-                                         (condition-message exn)
-                                         "unknown error"))))
-                 (let ((combiner (name-environment-ref final-environment name)))
-                   (mobius-apply combiner mobius-nil final-environment)
-                   (cons name #t)))))
-           check-defines)))
+    (lambda (check-defines main-defines final-environment)
+      (let* ((main-names (map cadr main-defines))
+             (sole-main-val
+              (and (= (length main-defines) 1)
+                   (guard (exn (#t #f))
+                     (name-environment-ref final-environment
+                                           (car main-names))))))
+        (map (lambda (expression)
+               (let* ((name (cadr expression))
+                      (name-str (symbol->string name))
+                      ;; Strip ~check- prefix, then remove trailing -NN suffix
+                      (base-str (if (and (> (string-length name-str) 7)
+                                         (string=? (substring name-str 0 7) "~check-"))
+                                    (substring name-str 7 (string-length name-str))
+                                    name-str))
+                      (main-name-str
+                       (let ((len (string-length base-str)))
+                         (if (and (>= len 3)
+                                  (char=? (string-ref base-str (- len 3)) #\-)
+                                  (char-numeric? (string-ref base-str (- len 2)))
+                                  (char-numeric? (string-ref base-str (- len 1))))
+                             (substring base-str 0 (- len 3))
+                             base-str)))
+                      (main-name (string->symbol main-name-str))
+                      (main-val (if (memq main-name main-names)
+                                    (guard (exn (#t sole-main-val))
+                                      (name-environment-ref final-environment main-name))
+                                    sole-main-val)))
+                 (guard (exn (#t (cons name
+                                       (if (message-condition? exn)
+                                           (condition-message exn)
+                                           "unknown error"))))
+                   (let ((check-fn (name-environment-ref final-environment name)))
+                     (if main-val
+                         (mobius-apply check-fn (cons main-val mobius-nil) final-environment)
+                         (mobius-apply check-fn mobius-nil final-environment))
+                     (cons name #t)))))
+             check-defines))))
 
   ;; Store all defines (main + checks) into the content-addressed store.
   ;; Main defines are stored first (checks may reference them).
@@ -1378,7 +1445,7 @@
                                    check-defines name-lookup author original-hash)
                   (display "Done. Use 'bb commit' to finalize.\n"))
                 ;; Run checks
-                (let ((results (edit-run-checks check-defines final-environment)))
+                (let ((results (edit-run-checks check-defines main-defines final-environment)))
                   (if (for-all (lambda (r) (eq? #t (cdr r))) results)
                       ;; All passed
                       (begin
