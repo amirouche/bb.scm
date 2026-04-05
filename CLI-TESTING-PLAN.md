@@ -4,19 +4,19 @@
 
 This plan covers systematic testing of every exported and internal function in `bb/cli.scm`, including command dispatch, all commands, helper functions, error handling, and integration scenarios.
 
-**Source**: `bb/bb/cli.scm` (2857 lines)
+**Source**: `bb/bb/cli.scm` (3063 lines)
 **Exports**: `main`, `~check-cli-build-argument-tree`, `~check-cli-mobius-write-surface`, `~check-cli-replace-ref`, `~check-cli-diff-trees`, `~check-cli-prepare-for-pretty`, `~check-cli-post-process`, `~check-cli-lcs-lines`, `~check-cli-resolve-ref`, `~check-cli-show`, `~check-cli-print`
 
 ---
 
 ## 1. Command Dispatch & Argument Parsing
 
-### 1.1 `main` (line 2370)
+### 1.1 `main` (line 2577)
 The main entry point. Dispatches on `(car arguments)` via a `cond` chain.
 
 - [ ] `bb` (no args) → calls `print-usage`
 - [ ] `bb --help` → calls `print-usage`
-- [ ] `bb --version` → prints `"bb 0.2.0"`
+- [ ] `bb --version` → prints `"bb 0.1.0"`
 - [ ] `bb eval <expr>` → routes to `command-eval`
 - [ ] `bb repl` → routes to `command-repl`
 - [ ] `bb add <file> [<lang>]` → routes to `command-add`
@@ -37,6 +37,7 @@ The main entry point. Dispatches on `(car arguments)` via a `cond` chain.
 - [ ] `bb print <name>` → routes to `command-print`
 - [ ] `bb tree <name>` → routes to `command-tree`
 - [ ] `bb caller <name>` → routes to `command-caller`
+- [ ] `bb check <ref>` → routes to `command-check`
 - [ ] `bb log [name]` → routes to `command-log`
 - [ ] `bb store init` → routes to `command-store-init`
 - [ ] `bb store info` → routes to `command-store-info`
@@ -46,17 +47,17 @@ The main entry point. Dispatches on `(car arguments)` via a `cond` chain.
 - [ ] Command names are case-sensitive (`bb RUN` → unknown)
 - [ ] `main` can be called with explicit args (bypasses `command-line`)
 
-### 1.2 `print-usage` (line 56)
+### 1.2 `print-usage` (line 58)
 - [ ] Prints all command descriptions
 - [ ] Prints version number at end
-- [ ] All commands listed match actual dispatch table
+- [ ] All commands listed match actual dispatch table (26 commands including `check`)
 
-### 1.3 `bb-version` (line 54)
-- [ ] Value is `"0.2.0"`
+### 1.3 `bb-version` (line 56)
+- [ ] Value is `"0.1.0"`
 
 ---
 
-## 2. Value Display — `mobius-display-value` (line 111)
+## 2. Value Display — `mobius-display-value` (line 114)
 
 Prints Mobius values in readable format. Used by `command-eval` and `command-run`.
 
@@ -79,7 +80,7 @@ Prints Mobius values in readable format. Used by `command-eval` and `command-run
 
 ---
 
-## 3. Surface Writer — `mobius-write-surface` (line 146)
+## 3. Surface Writer — `mobius-write-surface` (line 149)
 
 Writes denormalized surface expressions. Used by `command-edit`.
 
@@ -106,7 +107,7 @@ Writes denormalized surface expressions. Used by `command-edit`.
 
 ## 4. String Helpers
 
-### 4.1 `string-trim` (line 229)
+### 4.1 `string-trim` (line 232)
 - [ ] Leading whitespace removed: `"  hello"` → `"hello"`
 - [ ] Trailing whitespace removed: `"hello  "` → `"hello"`
 - [ ] Both: `"  hello  "` → `"hello"`
@@ -115,14 +116,14 @@ Writes denormalized surface expressions. Used by `command-edit`.
 - [ ] Empty string: `""` → `""`
 - [ ] Tabs and mixed whitespace: `"\t hello \n"` → `"hello"`
 
-### 4.2 `read-line` (line 244)
+### 4.2 `read-line` (line 247)
 - [ ] Reads characters until newline
 - [ ] Returns string without the newline
 - [ ] EOF with no characters → returns eof-object
 - [ ] EOF with accumulated characters → returns the string
 - [ ] Empty line (just newline) → returns `""`
 
-### 4.3 `string-contains?` (line 256)
+### 4.3 `string-contains?` (line 259)
 - [ ] Substring present → `#t`
 - [ ] Substring absent → `#f`
 - [ ] Needle at start → `#t`
@@ -132,23 +133,23 @@ Writes denormalized surface expressions. Used by `command-edit`.
 - [ ] Empty needle → `#t` (matches at position 0)
 - [ ] Empty haystack, non-empty needle → `#f`
 
-### 4.4 `string-split-at-sign` (line 281)
+### 4.4 `string-split-at-sign` (line 284)
 - [ ] `"name@lang"` → `("name" "lang")`
 - [ ] `"name"` (no @) → `("name")`
 - [ ] `"name@hash@lang"` → `("name" "hash" "lang")`
 - [ ] Empty string → `("")`
 
-### 4.5 `string-replace` (line 1492)
+### 4.5 `string-replace` (line 1570)
 - [ ] Replaces all occurrences of target with replacement
 - [ ] No match → returns original string
 - [ ] Multiple matches → all replaced
 
-### 4.6 `string-split-lines` (line 1514)
+### 4.6 `string-split-lines` (line 1592)
 - [ ] Splits on newlines
 - [ ] Single line → list of one
 - [ ] Empty string → appropriate handling
 
-### 4.7 `string-trim-whitespace` (line 1117)
+### 4.7 `string-trim-whitespace` (line 1195)
 - [ ] Trims leading and trailing whitespace
 
 **Suggested `~check-*`:** `~check-cli-string-helpers`
@@ -157,7 +158,7 @@ Writes denormalized surface expressions. Used by `command-edit`.
 
 ## 5. Reference Resolution & Name Index
 
-### 5.1 `resolve-ref` (line 341)
+### 5.1 `resolve-ref` (line 344)
 Multi-part reference resolution supporting `name`, `name@lang`, `hash@lang`, `name@hash@lang`, etc.
 
 - [ ] 1-part ref — exact name match
@@ -175,26 +176,26 @@ Multi-part reference resolution supporting `name`, `name@lang`, `hash@lang`, `na
 
 **Existing test:** `~check-cli-resolve-ref` — covers all 12 resolution cases plus `looks-like-lang?` heuristic.
 
-### 5.2 `looks-like-lang?` (line 295)
+### 5.2 `looks-like-lang?` (line 298)
 - [ ] Short alphabetic strings → `#t` (e.g., `"en"`, `"fr"`)
 - [ ] Hex-looking strings → `#f`
 - [ ] Long strings → `#f`
 
-### 5.3 `resolve-hash-only` (line 266)
+### 5.3 `resolve-hash-only` (line 269)
 - [ ] Exact hash match → returns hash
 - [ ] Unique prefix match → returns full hash
 - [ ] Ambiguous prefix → error
 
-### 5.4 `resolve-name-to-hash` (line 304)
+### 5.4 `resolve-name-to-hash` (line 307)
 - [ ] Name in index → returns hash
 - [ ] Missing name → returns `#f`
 
-### 5.5 `make-name-lookup` (line 444)
+### 5.5 `make-name-lookup` (line 447)
 - [ ] Creates name→hash lookup function from name index
 - [ ] Known name → returns hash
 - [ ] Unknown name → returns `#f`
 
-### 5.6 `make-hash->name` (line 542)
+### 5.6 `make-hash->name` (line 545)
 Builds a reverse lookup: hash → symbol name from the store-derived name index.
 
 - [ ] Known hash → returns symbol
@@ -202,12 +203,12 @@ Builds a reverse lookup: hash → symbol name from the store-derived name index.
 - [ ] Multiple entries → returns first match
 - [ ] Empty name index → always returns `#f`
 
-### 5.7 `shortest-unique-prefix` (line 710)
+### 5.7 `shortest-unique-prefix` (line 713)
 - [ ] Finds minimal unique hash prefix (>= 6 chars)
 - [ ] Single hash → returns 6-char prefix
 - [ ] Shared prefix → returns longer prefix to disambiguate
 
-### 5.8 `load-combiner-value` (line 560)
+### 5.8 `load-combiner-value` (line 563)
 Loads a single combiner from store, denormalizes, and evaluates.
 
 - [ ] Loads body from `load-combiner`
@@ -216,7 +217,7 @@ Loads a single combiner from store, denormalizes, and evaluates.
 - [ ] Returns evaluated result via `mobius-eval`
 - [ ] Missing combiner → propagates error from store layer
 
-### 5.9 `load-index-into-env` (line 569)
+### 5.9 `load-index-into-env` (line 572)
 Loads all name-index entries into an evaluation environment.
 
 - [ ] Pre-binds all names to `#void` (for mutual references)
@@ -226,7 +227,7 @@ Loads all name-index entries into an evaluation environment.
 - [ ] Empty name index → returns env unchanged
 - [ ] Multiple entries → all loaded and bound
 
-### 5.10 `extract-refs` (line 697)
+### 5.10 `extract-refs` (line 700)
 Extracts all `(mobius-constant-ref hash)` references from a tree.
 
 - [ ] `(mobius-constant-ref "abc")` → `("abc")`
@@ -235,7 +236,7 @@ Extracts all `(mobius-constant-ref hash)` references from a tree.
 - [ ] Non-pair atom → `()`
 - [ ] Duplicate refs → all returned (not deduplicated)
 
-### 5.11 `extract-named-refs` (line 1780)
+### 5.11 `extract-named-refs` (line 1858)
 Extracts named references (hash→name pairs) from a tree.
 
 - [ ] Returns list of `(name . hash)` pairs
@@ -268,7 +269,7 @@ Extracts named references (hash→name pairs) from a tree.
 - [ ] Uses `string-trim` on input
 - [ ] Uses `read-line` for input
 
-### 6.3 `command-add` (line ~1168 via `edit-store-all!`)
+### 6.3 `command-add` (line 463)
 - [ ] `bb add file.scm [lang]` → parse, normalize, hash, store, register
 - [ ] `bb add - [lang]` → reads from stdin
 - [ ] Prints `"staged: name -> hash..."` for each define
@@ -285,7 +286,7 @@ Extracts named references (hash→name pairs) from a tree.
 - [ ] `--derived-from` and `--relation` flags supported
 - [ ] Check combiners stored with check hashes in lineage
 
-### 6.4 `command-run` (line 1021)
+### 6.4 `command-run` (line 1099)
 - [ ] `bb run name` → loads and displays combiner value
 - [ ] `bb run name arg1 arg2` → evaluates args, builds argument tree, applies
 - [ ] Missing args → error to stderr, exit 1
@@ -295,11 +296,29 @@ Extracts named references (hash→name pairs) from a tree.
 - [ ] Uses `build-argument-tree` for argument construction
 - [ ] Non-existent name/hash → error from store layer
 
+### 6.5 `command-check` (line 903)
+- [ ] `bb check name` → walks dependency graph, collects check hashes, runs each check
+- [ ] Missing args → error to stderr, exit 1
+- [ ] Walks dependency DAG via `extract-refs` (reuses `command-tree` pattern)
+- [ ] Uses visited hashtable to avoid revisiting combiners
+- [ ] Collects check hashes per combiner via `store-load-checks`
+- [ ] Builds full environment (base library + name index)
+- [ ] Each check: loads combiner value, applies to `#nil`
+- [ ] Pass → prints `"PASS  combiner-name / check-name"`
+- [ ] Fail → prints `"FAIL  combiner-name / check-name — error-message"`
+- [ ] Summary: `"N check(s), M passed, K failed."`
+- [ ] Exit 1 if any check fails, exit 0 if all pass
+- [ ] Combiners with no checks → skipped (not counted)
+- [ ] Name resolved via name index, falls back to raw hash
+- [ ] Hash display uses `hash->name` with fallback to 12-char substring
+
+**Suggested `~check-*`:** `~check-cli-command-check`
+
 ---
 
 ## 7. Commands — Store Management
 
-### 7.1 `command-store-init` (line 603)
+### 7.1 `command-store-init` (line 606)
 - [ ] Creates subdirectories: `combiners/`, `constants/`, `reviewed/`, `worklog/`
 - [ ] Creates `config.scm` with default author template
 - [ ] Creates `.gitignore` with bb-specific patterns
@@ -309,14 +328,14 @@ Extracts named references (hash→name pairs) from a tree.
 - [ ] Idempotent: existing files/dirs not overwritten (`unless file-exists?`)
 - [ ] Prints `"Initialized mobius store at <dir>"`
 
-### 7.2 `command-store-info` (line 642)
+### 7.2 `command-store-info` (line 645)
 - [ ] Prints store root path
 - [ ] Prints combiner count
 - [ ] Lists each entry as `"name -> hash..."`
 - [ ] Empty store → shows 0
 - [ ] Requires `find-store-root` (error if no store)
 
-### 7.3 `command-status` (line 666)
+### 7.3 `command-status` (line 669)
 - [ ] Empty store → `"Empty store. Use 'bb add' to register combiners."`
 - [ ] Non-empty → prints count and per-combiner state
 - [ ] States displayed: `[wip]`, `[committed]`, `[committed, reviewed]`, `[unknown]`
@@ -327,7 +346,7 @@ Extracts named references (hash→name pairs) from a tree.
 
 ## 8. Commands — Dependency Graph
 
-### 8.1 `command-tree` (line 857)
+### 8.1 `command-tree` (line 860)
 - [ ] Shows dependency DAG downward
 - [ ] Indentation via `(* depth 2)` spaces
 - [ ] Shows display name and abbreviated hash `[hash...]`
@@ -337,7 +356,7 @@ Extracts named references (hash→name pairs) from a tree.
 - [ ] Missing args → error to stderr, exit 1
 - [ ] Recursive: follows `mobius-constant-ref` deps
 
-### 8.2 `command-caller` (line 900)
+### 8.2 `command-caller` (line 978)
 - [ ] Shows reverse dependency DAG (who references target?)
 - [ ] Prints header `"Callers of <name>:"`
 - [ ] Scans all name-index entries, extracts refs from each body
@@ -350,16 +369,16 @@ Extracts named references (hash→name pairs) from a tree.
 
 ## 9. Commands — Lineage & Log
 
-### 9.1 `list-lineage-files` (line 933)
+### 9.1 `list-lineage-files` (line 1011)
 - [ ] Lists `.scm` files in combiner's `lineage/` subdirectory
 - [ ] Returns empty list if lineage dir doesn't exist
 - [ ] Filters by `.scm` suffix
 
-### 9.2 `load-lineage-record` (line 943)
+### 9.2 `load-lineage-record` (line 1021)
 - [ ] Reads and returns S-expression from lineage file
 - [ ] Correct path construction: `combiners/HASH/lineage/filename`
 
-### 9.3 `command-log` (line 949)
+### 9.3 `command-log` (line 1027)
 - [ ] No args → shows timeline for all combiners
 - [ ] With name arg → shows timeline for specific combiner
 - [ ] Collects lineage records from all entries (or specific one)
@@ -374,17 +393,17 @@ Extracts named references (hash→name pairs) from a tree.
 
 ## 10. Commands — Display & Output
 
-### 10.1 `command-show` (line 845)
+### 10.1 `command-show` (line 848)
 - [ ] Displays combiner with doc comments and pretty-printed definition
 - [ ] Uses `show-combiner-with-mapping` for output
 - [ ] Missing args → error to stderr, exit 1
 
-### 10.2 `show-combiner-with-mapping` (line 826)
+### 10.2 `show-combiner-with-mapping` (line 829)
 - [ ] Denormalizes tree with body, mapping, hash->name
 - [ ] Displays doc comments prefixed with `;;`
 - [ ] Pretty-prints `(define name ...)` form
 
-### 10.3 `command-print` (line 722)
+### 10.3 `command-print` (line 725)
 - [ ] Outputs full Chez Scheme library form with dependencies
 - [ ] Resolves dependency graph and includes all referenced combiners
 - [ ] Uses `shortest-unique-prefix` for hash disambiguation
@@ -396,7 +415,7 @@ Extracts named references (hash→name pairs) from a tree.
 
 ## 11. Commands — Edit Workflow
 
-### 11.1 `command-edit` (line 1346)
+### 11.1 `command-edit` (line 1424)
 - [ ] Opens combiner in `$EDITOR` for editing
 - [ ] Denormalizes tree via `denormalize-tree` with body, mapping, hash->name
 - [ ] Includes check combiners in edit buffer
@@ -405,35 +424,35 @@ Extracts named references (hash→name pairs) from a tree.
 - [ ] Missing args → error to stderr, exit 1
 - [ ] Name resolved via name index, falls back to raw hash
 
-### 11.2 `classify-defines` (line 1136)
+### 11.2 `classify-defines` (line 1214)
 - [ ] Separates defines into main and `~check-*` categories
 - [ ] Non-define forms classified separately
 
-### 11.3 `edit-run-checks` (line 1152)
+### 11.3 `edit-run-checks` (line 1230)
 - [ ] Runs check procedures during editing workflow
 
-### 11.4 `edit-store-all!` (line 1168)
+### 11.4 `edit-store-all!` (line 1246)
 - [ ] Stores both main and check combiners
 - [ ] Strips `~check-` prefix from self-name in mapping position 0
 - [ ] Records check hashes in main combiner lineage
 - [ ] Keeps full `~check-` name for name-index registration
 
-### 11.5 `edit-handle-failure` (line 1248)
+### 11.5 `edit-handle-failure` (line 1326)
 - [ ] Handles edit failures gracefully
 
-### 11.6 `edit-save-flow` (line 1282)
+### 11.6 `edit-save-flow` (line 1360)
 - [ ] Orchestrates parse → store → commit flow after editor save
 
-### 11.7 `define->pretty-string` (line 1331)
+### 11.7 `define->pretty-string` (line 1409)
 - [ ] Pretty-prints a define expression to string
 
-### 11.8 `source-extract-doc` (line 1071)
+### 11.8 `source-extract-doc` (line 1149)
 - [ ] Extracts `;;` comment documentation from source
 
-### 11.9 `doc-lines->string` (line 1095)
+### 11.9 `doc-lines->string` (line 1173)
 - [ ] Converts doc comment lines to string
 
-### 11.10 `doc->comment-string` (line 1106)
+### 11.10 `doc->comment-string` (line 1184)
 - [ ] Converts doc string to `;;`-prefixed comment block
 
 **Integration Test:**
@@ -446,7 +465,7 @@ EDITOR=cat bb edit foo   # prints (define foo (lambda ...))
 
 ## 12. Commands — Commit & Review
 
-### 12.1 `command-commit` (line ~after edit)
+### 12.1 `command-commit` (line 1505)
 - [ ] `bb commit foo` → calls `record-lineage!` with "commit" relation
 - [ ] `bb commit --all` → commits all stored combiners
 - [ ] `bb commit foo bar` → commits multiple by name
@@ -456,7 +475,7 @@ EDITOR=cat bb edit foo   # prints (define foo (lambda ...))
 - [ ] Prints count at end: `"N combiner(s) committed."`
 - [ ] Uses `get-config-author` for author
 
-### 12.2 `command-review` (line 2003)
+### 12.2 `command-review` (line 2081)
 - [ ] Marks combiner as reviewed via `mark-reviewed!`
 - [ ] Already reviewed → prints `"already reviewed: name"` (idempotent)
 - [ ] Supports multiple names in one call
@@ -467,7 +486,7 @@ EDITOR=cat bb edit foo   # prints (define foo (lambda ...))
 
 ## 13. Commands — Diff & Refactor
 
-### 13.1 `command-diff` (line 1845)
+### 13.1 `command-diff` (line 1923)
 - [ ] Compares pretty-printed surface forms of two combiners
 - [ ] Identical → `"Trees are identical."`
 - [ ] Different → prints `"--- name1"`, `"+++ name2"`, then line-based diff with ANSI colors
@@ -475,7 +494,7 @@ EDITOR=cat bb edit foo   # prints (define foo (lambda ...))
 - [ ] Missing args (< 2) → error to stderr, exit 1
 - [ ] Name resolved via name index, falls back to raw hash
 
-### 13.2 `diff-trees` (line 1829)
+### 13.2 `diff-trees` (line 1907)
 - [ ] `equal?` trees → no output (void)
 - [ ] Both pairs → recurses into car and cdr with path `/car`, `/cdr`
 - [ ] Leaf difference → prints `"at path: old -> new"`
@@ -483,7 +502,7 @@ EDITOR=cat bb edit foo   # prints (define foo (lambda ...))
 
 **Existing test:** `~check-cli-diff-trees` — covers identical and different trees.
 
-### 13.3 `lcs-lines` (line 1683)
+### 13.3 `lcs-lines` (line 1761)
 - [ ] Computes longest common subsequence of line lists
 - [ ] Identical lists → returns full list
 - [ ] Completely different → returns empty
@@ -491,14 +510,14 @@ EDITOR=cat bb edit foo   # prints (define foo (lambda ...))
 
 **Existing test:** `~check-cli-lcs-lines` — covers identical, different, overlapping, and empty cases.
 
-### 13.4 `diff-lines` (line 1726)
+### 13.4 `diff-lines` (line 1804)
 - [ ] Outputs unified diff with ANSI red/green coloring
 - [ ] Uses `lcs-lines` for alignment
 
-### 13.5 `diff-dependency-hashes` (line 1788)
+### 13.5 `diff-dependency-hashes` (line 1866)
 - [ ] Compares hash references between two trees
 
-### 13.6 `command-refactor` (line 1911)
+### 13.6 `command-refactor` (line 1989)
 - [ ] Replaces `(mobius-constant-ref old-hash)` with new-hash in all callers
 - [ ] Recomputes hashes for updated combiners
 - [ ] Cascades: if caller hash changes, its callers are also updated (worklist)
@@ -511,7 +530,7 @@ EDITOR=cat bb edit foo   # prints (define foo (lambda ...))
 - [ ] No-op when no callers reference old hash
 - [ ] Optional `<at>` argument to scope refactor to specific combiner
 
-### 13.7 `replace-ref` (line 1897)
+### 13.7 `replace-ref` (line 1975)
 - [ ] Replaces matching `(mobius-constant-ref old)` → `(mobius-constant-ref new)`
 - [ ] Recurses into car and cdr of pairs
 - [ ] Non-matching refs unchanged
@@ -524,33 +543,33 @@ EDITOR=cat bb edit foo   # prints (define foo (lambda ...))
 
 ## 14. Pretty-Printing Pipeline
 
-### 14.1 `prepare-for-pretty` (line 1536)
+### 14.1 `prepare-for-pretty` (line 1614)
 - [ ] Replaces `#t`/`#f` with `%true`/`%false` placeholders
 - [ ] Replaces `'()` with `%nil` placeholder
 - [ ] Processes nested structures recursively
 
 **Existing test:** `~check-cli-prepare-for-pretty`
 
-### 14.2 `prepare-for-pretty-tail` (line 1557)
+### 14.2 `prepare-for-pretty-tail` (line 1635)
 - [ ] Helper for tail-position preparation
 
-### 14.3 `mobius-post-process` (line 1571)
+### 14.3 `mobius-post-process` (line 1649)
 - [ ] Restores `%true` → `#true`, `%false` → `#false`, `%nil` → `#nil`, `%void` → `#void`, `%eof` → `#eof`
 - [ ] Restores unquote syntax: `,(x)`, `,x`, `,_`
 
 **Existing test:** `~check-cli-post-process`
 
-### 14.4 `post-process-unquotes` (line 1585)
+### 14.4 `post-process-unquotes` (line 1663)
 - [ ] Restores unquote syntax in post-processed output
 
-### 14.5 `replace-form` (line 1596)
+### 14.5 `replace-form` (line 1674)
 - [ ] Replaces form patterns in expression
 
-### 14.6 `pretty-print-one-combiner` (line 1629)
+### 14.6 `pretty-print-one-combiner` (line 1707)
 - [ ] Pretty-prints a single combiner body with its mapping
 - [ ] Returns string
 
-### 14.7 `mobius-pretty-string` (line 1641)
+### 14.7 `mobius-pretty-string` (line 1719)
 - [ ] Denormalizes combiner and returns pretty-printed Möbius source
 - [ ] Includes doc as `;;` comments
 - [ ] Appends check combiners after main define
@@ -560,7 +579,7 @@ EDITOR=cat bb edit foo   # prints (define foo (lambda ...))
 
 ## 15. Commands — Search & Resolve
 
-### 15.1 `command-search` (line 2030)
+### 15.1 `command-search` (line 2108)
 - [ ] Searches combiner names via `string-contains?`
 - [ ] Searches mapping content via `string-contains?`
 - [ ] Name match → prints `"name: <name> [hash...]"`
@@ -572,7 +591,7 @@ EDITOR=cat bb edit foo   # prints (define foo (lambda ...))
 
 **Note:** Search is case-sensitive (uses `string-contains?`, not case-folding).
 
-### 15.2 `command-resolve` (line 2083)
+### 15.2 `command-resolve` (line 2161)
 - [ ] Resolves a reference to its full specification (hash, language, mapping)
 - [ ] Outputs resolved details
 
@@ -580,7 +599,7 @@ EDITOR=cat bb edit foo   # prints (define foo (lambda ...))
 
 ## 16. Commands — Worklog & Validate
 
-### 16.1 `command-worklog` (line 2155)
+### 16.1 `command-worklog` (line 2233)
 - [ ] `bb worklog name "message"` → calls `add-worklog-entry!`
 - [ ] `bb worklog name` (no message) → lists entries via `list-worklog-entries`
 - [ ] Entries displayed as `"timestamp  message"`
@@ -588,7 +607,7 @@ EDITOR=cat bb edit foo   # prints (define foo (lambda ...))
 - [ ] Missing args → error to stderr, exit 1
 - [ ] Name resolved via name index, falls back to raw hash
 
-### 16.2 `command-validate` (line 2196)
+### 16.2 `command-validate` (line 2274)
 - [ ] Checks each stored combiner has a valid tree file (`file-exists?`)
 - [ ] Verifies hash matches: serializes body, computes SHA-256, compares
 - [ ] Detects orphaned combiners (in store but not in name index)
@@ -603,7 +622,7 @@ EDITOR=cat bb edit foo   # prints (define foo (lambda ...))
 
 ## 17. Commands — Remote Operations
 
-### 17.1 `command-anchor` (line 2229)
+### 17.1 `command-anchor` (line 2307)
 - [ ] Publishes only committed combiners (`has-committed-lineage?` check)
 - [ ] Copies combiners via `copy-combiner-between-stores!`
 - [ ] Copies mappings to remote store
@@ -614,27 +633,44 @@ EDITOR=cat bb edit foo   # prints (define foo (lambda ...))
 - [ ] Prints count: `"N combiner(s) anchored to remote."`
 - [ ] Remote path from `get-config-remotes`
 
-### 17.2 `command-remote` (line 2308)
-**Subcommands:**
+### 17.2 `command-remote` (line 2552)
+**Subcommands:** `add`, `remove`, `list`, `push`, `pull`, `sync`
 
-**`bb remote list`:**
+**`bb remote list`** (line 2367):
 - [ ] Shows all remotes as `"name -> path"`
 - [ ] No remotes → `"No remotes configured."`
 
-**`bb remote add <name> <path>`:**
+**`bb remote add [--read-only] <name> <path>`** (line 2383):
 - [ ] Adds remote to config
+- [ ] `--read-only` flag → stores remote with read-only property
 - [ ] Duplicate name → overwrites (filters out old, prepends new)
 - [ ] Missing args (< 2) → error to stderr, exit 1
 - [ ] Prints confirmation: `"Remote 'name' added -> path"`
 - [ ] Persisted via `set-config-remotes!`
 
-**`bb remote remove <name>`:**
+**`bb remote remove <name>`** (line 2414):
 - [ ] Removes remote from config
 - [ ] Missing name → error to stderr, exit 1
 - [ ] Non-existent name → silently succeeds (filter returns same list)
 - [ ] Prints `"Remote 'name' removed."`
 
-**`bb remote sync`:**
+**`bb remote push <name>`** (line 2429):
+- [ ] Pushes committed combiners to named remote
+- [ ] Missing remote name → error to stderr, exit 1
+- [ ] Unknown remote name → error to stderr, exit 1
+- [ ] Copies combiners and mappings via store copy functions
+- [ ] Prints `"pushed: name"` per combiner
+- [ ] Prints count: `"N combiner(s) pushed."`
+
+**`bb remote pull <name>`** (line 2466):
+- [ ] Pulls combiners from named remote
+- [ ] Missing remote name → error to stderr, exit 1
+- [ ] Unknown remote name → error to stderr, exit 1
+- [ ] Copies combiners and mappings from remote store
+- [ ] Prints `"pulled: name"` per combiner
+- [ ] Prints count: `"N combiner(s) pulled."`
+
+**`bb remote sync`** (line 2500):
 - [ ] Pulls from all configured remotes, then pushes to non-read-only remotes
 - [ ] No remotes configured → `"No remotes configured."`, exit 1
 - [ ] Read-only remote → pulls but skips push with `"Skipping push: remote is read-only."`
@@ -646,16 +682,16 @@ EDITOR=cat bb edit foo   # prints (define foo (lambda ...))
 - [ ] Multiple remotes → syncs each in order
 
 **`bb remote`** (no subcommand):
-- [ ] Error to stderr, exit 1
+- [ ] Prints `"bb remote: missing subcommand (add, remove, list, push, pull, sync)"`, exit 1
 
 **`bb remote badcmd`:**
-- [ ] Prints `"unknown subcommand 'badcmd'"`
+- [ ] Prints `"bb remote: unknown subcommand 'badcmd'"`
 
 ---
 
 ## 18. ANSI Color Constants
 
-### Line 1482–1485
+### Line 1560–1563
 - `ansi-red`, `ansi-green`, `ansi-cyan`, `ansi-reset`
 - Used by `diff-lines` for colored diff output
 
@@ -735,10 +771,12 @@ bb commit foo
 bb remote add origin /tmp/remote
 bb anchor origin       # copies committed combiner
 bb remote list          # shows origin
+bb remote push origin   # explicit push to named remote
 
 cd /tmp/remote && bb store init
 bb remote add upstream /tmp/local
-bb remote sync          # pulls foo from all remotes, pushes committed
+bb remote pull upstream # explicit pull from named remote
+bb remote sync          # pulls from all remotes, pushes committed
 bb run foo              # works
 bb remote sync          # idempotent: 0 pulled, 0 pushed
 ```
@@ -768,17 +806,29 @@ bb edit foo             # shows both main and check defines
 # Checks stored with stripped name in mapping, reconstituted with ~check- prefix
 ```
 
-### Scenario G: REPL Session
+### Scenario G: Check Workflow
+```bash
+# File contains (define foo ...) and (define ~check-foo-00 ...)
+bb add foo-with-checks.scm
+bb commit --all
+bb check foo            # walks deps, runs ~check-foo-00
+# Output:
+# PASS  foo / ~check-foo-00
+#
+# 1 check(s), 1 passed, 0 failed.
+```
+
+### Scenario H: REPL Session
 ```bash
 echo -e '(+ 2 3)\n(define x 10)\n(* x x)' | bb repl
 # Output:
-# bb repl — Mobius Seed v0.2.0
+# bb repl — Mobius Seed v0.1.0
 # ...
 # 5
 # bb> bb> 100
 ```
 
-### Scenario H: Eval Expressions
+### Scenario I: Eval Expressions
 ```bash
 bb eval '(+ 2 3)'                    # 5
 bb eval '(define f (lambda (x) (* x x))) (f 7)'  # 49
@@ -786,7 +836,7 @@ bb eval '(if #true 1 2)'             # 1
 bb eval '#nil'                       # #nil
 ```
 
-### Scenario I: Multi-Language Support
+### Scenario J: Multi-Language Support
 ```bash
 bb add double.fr.scm fr
 bb add double.en.scm en
@@ -801,7 +851,7 @@ bb show doubler@en      # shows English version
 - [ ] All existing `~check-*` tests pass (`binink check .`)
 - [ ] Store layout uses flat hash directories (no two-char prefix split)
 - [ ] Denormalization round-trip: `add → edit → add` produces same hash
-- [ ] All 25 commands listed in `print-usage` match dispatch table
+- [ ] All 26 commands listed in `print-usage` match dispatch table
 - [ ] Transcript tests in `tests/*.md` still pass
 - [ ] `~check-` prefix correctly stripped in mappings, reconstituted on read
 
@@ -823,16 +873,16 @@ bb show doubler@en      # shows English version
 ### Currently exported from `(bb cli)`:
 | Test | What it covers | Line |
 |------|---------------|------|
-| `~check-cli-build-argument-tree` | `build-argument-tree` — argument tree construction from list | 2425 |
-| `~check-cli-mobius-write-surface` | `mobius-write-surface` — surface syntax output for integers, `,x`, `,(x)`, `,_`, lists | 2435 |
-| `~check-cli-replace-ref` | `replace-ref` — hash replacement in trees (basic, nested, no-match) | 2468 |
-| `~check-cli-diff-trees` | `diff-trees` — identical trees (no output) and different trees (output with paths) | 2485 |
-| `~check-cli-prepare-for-pretty` | `prepare-for-pretty` — boolean/nil placeholder replacement, string helpers | 2500 |
-| `~check-cli-post-process` | `mobius-post-process` — placeholder restoration, unquote syntax | 2524 |
-| `~check-cli-lcs-lines` | `lcs-lines` — LCS algorithm, `diff-lines` output | 2541 |
-| `~check-cli-resolve-ref` | `resolve-ref` — 12 resolution cases including multi-part refs, ambiguity, timestamps | 2562 |
-| `~check-cli-show` | `command-show` pipeline — basic and inline denormalization modes | 2673 |
-| `~check-cli-print` | `command-print` — hash disambiguation, duplicate name handling | 2725 |
+| `~check-cli-build-argument-tree` | `build-argument-tree` — argument tree construction from list | 2631 |
+| `~check-cli-mobius-write-surface` | `mobius-write-surface` — surface syntax output for integers, `,x`, `,(x)`, `,_`, lists | 2641 |
+| `~check-cli-replace-ref` | `replace-ref` — hash replacement in trees (basic, nested, no-match) | 2674 |
+| `~check-cli-diff-trees` | `diff-trees` — identical trees (no output) and different trees (output with paths) | 2691 |
+| `~check-cli-prepare-for-pretty` | `prepare-for-pretty` — boolean/nil placeholder replacement, string helpers | 2706 |
+| `~check-cli-post-process` | `mobius-post-process` — placeholder restoration, unquote syntax | 2730 |
+| `~check-cli-lcs-lines` | `lcs-lines` — LCS algorithm, `diff-lines` output | 2747 |
+| `~check-cli-resolve-ref` | `resolve-ref` — 12 resolution cases including multi-part refs, ambiguity, timestamps | 2768 |
+| `~check-cli-show` | `command-show` pipeline — basic and inline denormalization modes | 2879 |
+| `~check-cli-print` | `command-print` — hash disambiguation, duplicate name handling | 2931 |
 
 ### Suggested new `~check-*` tests:
 | Test | What it would cover |
@@ -843,6 +893,7 @@ bb show doubler@en      # shows English version
 | `~check-cli-make-hash-to-name` | `make-hash->name` — reverse lookup from name index |
 | `~check-cli-classify-defines` | `classify-defines` — main vs check define separation |
 | `~check-cli-doc-helpers` | `source-extract-doc`, `doc-lines->string`, `doc->comment-string` |
+| `~check-cli-command-check` | `command-check` — dependency walk, check collection, pass/fail reporting |
 
 ---
 
@@ -875,79 +926,88 @@ Every function defined in `cli.scm` and which plan section covers it:
 
 | Function | Line | Section | Has `~check-*`? |
 |----------|------|---------|-----------------|
-| `bb-version` | 54 | §1.3 | — |
-| `print-usage` | 56 | §1.2 | — |
-| `command-eval` | 97 | §6.1 | — |
-| `mobius-display-value` | 111 | §2 | suggested |
-| `mobius-write-surface` | 146 | §3 | **yes** |
-| `command-repl` | 190 | §6.2 | — |
-| `string-trim` | 229 | §4.1 | suggested |
-| `read-line` | 244 | §4.2 | — |
-| `string-contains?` | 256 | §4.3 | suggested |
-| `resolve-hash-only` | 266 | §5.3 | — |
-| `string-split-at-sign` | 281 | §4.4 | — |
-| `looks-like-lang?` | 295 | §5.2 | **yes** (in resolve-ref) |
-| `resolve-name-to-hash` | 304 | §5.4 | — |
-| `resolve-ref` | 341 | §5.1 | **yes** |
-| `resolve-ref-mapping` | 402 | §5.1 | — |
-| `make-name-lookup` | 444 | §5.5 | — |
-| `make-hash->name` | 542 | §5.6 | suggested |
-| `load-combiner-value` | 560 | §5.8 | — |
-| `load-index-into-env` | 569 | §5.9 | — |
-| `command-store-init` | 603 | §7.1 | — |
-| `command-store-info` | 642 | §7.2 | — |
-| `command-status` | 666 | §7.3 | — |
-| `extract-refs` | 697 | §5.10 | suggested |
-| `shortest-unique-prefix` | 710 | §5.7 | **yes** (in print) |
-| `command-print` | 722 | §10.3 | **yes** |
-| `show-combiner-with-mapping` | 826 | §10.2 | — |
-| `command-show` | 845 | §10.1 | **yes** |
-| `command-tree` | 857 | §8.1 | — |
-| `command-caller` | 900 | §8.2 | — |
-| `list-lineage-files` | 933 | §9.1 | — |
-| `load-lineage-record` | 943 | §9.2 | — |
-| `command-log` | 949 | §9.3 | — |
-| `command-run` | 1021 | §6.4 | — |
-| `source-extract-doc` | 1071 | §11.8 | suggested |
-| `doc-lines->string` | 1095 | §11.9 | — |
-| `doc->comment-string` | 1106 | §11.10 | — |
-| `string-trim-whitespace` | 1117 | §4.7 | — |
-| `classify-defines` | 1136 | §11.2 | suggested |
-| `edit-run-checks` | 1152 | §11.3 | — |
-| `edit-store-all!` | 1168 | §11.4 | — |
-| `edit-handle-failure` | 1248 | §11.5 | — |
-| `edit-save-flow` | 1282 | §11.6 | — |
-| `define->pretty-string` | 1331 | §11.7 | — |
-| `command-edit` | 1346 | §11.1 | — |
-| `ansi-red` | 1482 | §18 | — |
-| `ansi-green` | 1483 | §18 | — |
-| `ansi-cyan` | 1484 | §18 | — |
-| `ansi-reset` | 1485 | §18 | — |
-| `string-replace` | 1492 | §4.5 | — |
-| `string-split-lines` | 1514 | §4.6 | — |
-| `prepare-for-pretty` | 1536 | §14.1 | **yes** |
-| `prepare-for-pretty-tail` | 1557 | §14.2 | — |
-| `mobius-post-process` | 1571 | §14.3 | **yes** |
-| `post-process-unquotes` | 1585 | §14.4 | — |
-| `replace-form` | 1596 | §14.5 | — |
-| `pretty-print-one-combiner` | 1629 | §14.6 | — |
-| `mobius-pretty-string` | 1641 | §14.7 | — |
-| `lcs-lines` | 1683 | §13.3 | **yes** |
-| `diff-lines` | 1726 | §13.4 | — |
-| `extract-named-refs` | 1780 | §5.11 | — |
-| `diff-dependency-hashes` | 1788 | §13.5 | — |
-| `diff-trees` | 1829 | §13.2 | **yes** |
-| `command-diff` | 1845 | §13.1 | — |
-| `replace-ref` | 1897 | §13.7 | **yes** |
-| `command-refactor` | 1911 | §13.6 | — |
-| `command-review` | 2003 | §12.2 | — |
-| `command-search` | 2030 | §15.1 | — |
-| `command-resolve` | 2083 | §15.2 | — |
-| `command-worklog` | 2155 | §16.1 | — |
-| `command-validate` | 2196 | §16.2 | — |
-| `command-anchor` | 2229 | §17.1 | — |
-| `command-remote` | 2308 | §17.2 | — |
-| `main` | 2370 | §1.1 | — |
+| `bb-version` | 56 | §1.3 | — |
+| `print-usage` | 58 | §1.2 | — |
+| `command-eval` | 100 | §6.1 | — |
+| `mobius-display-value` | 114 | §2 | suggested |
+| `mobius-write-surface` | 149 | §3 | **yes** |
+| `command-repl` | 193 | §6.2 | — |
+| `string-trim` | 232 | §4.1 | suggested |
+| `read-line` | 247 | §4.2 | — |
+| `string-contains?` | 259 | §4.3 | suggested |
+| `resolve-hash-only` | 269 | §5.3 | — |
+| `string-split-at-sign` | 284 | §4.4 | — |
+| `looks-like-lang?` | 298 | §5.2 | **yes** (in resolve-ref) |
+| `resolve-name-to-hash` | 307 | §5.4 | — |
+| `resolve-ref` | 344 | §5.1 | **yes** |
+| `resolve-ref-mapping` | 405 | §5.1 | — |
+| `command-add` | 463 | §6.3 | — |
+| `make-name-lookup` | 447 | §5.5 | — |
+| `make-hash->name` | 545 | §5.6 | suggested |
+| `load-combiner-value` | 563 | §5.8 | — |
+| `load-index-into-env` | 572 | §5.9 | — |
+| `command-store-init` | 606 | §7.1 | — |
+| `command-store-info` | 645 | §7.2 | — |
+| `command-status` | 669 | §7.3 | — |
+| `extract-refs` | 700 | §5.10 | suggested |
+| `shortest-unique-prefix` | 713 | §5.7 | **yes** (in print) |
+| `command-print` | 725 | §10.3 | **yes** |
+| `show-combiner-with-mapping` | 829 | §10.2 | — |
+| `command-show` | 848 | §10.1 | **yes** |
+| `command-tree` | 860 | §8.1 | — |
+| `command-check` | 903 | §6.5 | suggested |
+| `command-caller` | 978 | §8.2 | — |
+| `list-lineage-files` | 1011 | §9.1 | — |
+| `load-lineage-record` | 1021 | §9.2 | — |
+| `command-log` | 1027 | §9.3 | — |
+| `command-run` | 1099 | §6.4 | — |
+| `source-extract-doc` | 1149 | §11.8 | suggested |
+| `doc-lines->string` | 1173 | §11.9 | — |
+| `doc->comment-string` | 1184 | §11.10 | — |
+| `string-trim-whitespace` | 1195 | §4.7 | — |
+| `classify-defines` | 1214 | §11.2 | suggested |
+| `edit-run-checks` | 1230 | §11.3 | — |
+| `edit-store-all!` | 1246 | §11.4 | — |
+| `edit-handle-failure` | 1326 | §11.5 | — |
+| `edit-save-flow` | 1360 | §11.6 | — |
+| `define->pretty-string` | 1409 | §11.7 | — |
+| `command-edit` | 1424 | §11.1 | — |
+| `command-commit` | 1505 | §12.1 | — |
+| `ansi-red` | 1560 | §18 | — |
+| `ansi-green` | 1561 | §18 | — |
+| `ansi-cyan` | 1562 | §18 | — |
+| `ansi-reset` | 1563 | §18 | — |
+| `string-replace` | 1570 | §4.5 | — |
+| `string-split-lines` | 1592 | §4.6 | — |
+| `prepare-for-pretty` | 1614 | §14.1 | **yes** |
+| `prepare-for-pretty-tail` | 1635 | §14.2 | — |
+| `mobius-post-process` | 1649 | §14.3 | **yes** |
+| `post-process-unquotes` | 1663 | §14.4 | — |
+| `replace-form` | 1674 | §14.5 | — |
+| `pretty-print-one-combiner` | 1707 | §14.6 | — |
+| `mobius-pretty-string` | 1719 | §14.7 | — |
+| `lcs-lines` | 1761 | §13.3 | **yes** |
+| `diff-lines` | 1804 | §13.4 | — |
+| `extract-named-refs` | 1858 | §5.11 | — |
+| `diff-dependency-hashes` | 1866 | §13.5 | — |
+| `diff-trees` | 1907 | §13.2 | **yes** |
+| `command-diff` | 1923 | §13.1 | — |
+| `replace-ref` | 1975 | §13.7 | **yes** |
+| `command-refactor` | 1989 | §13.6 | — |
+| `command-review` | 2081 | §12.2 | — |
+| `command-search` | 2108 | §15.1 | — |
+| `command-resolve` | 2161 | §15.2 | — |
+| `command-worklog` | 2233 | §16.1 | — |
+| `command-validate` | 2274 | §16.2 | — |
+| `command-anchor` | 2307 | §17.1 | — |
+| `command-remote-list` | 2367 | §17.2 | — |
+| `command-remote-add` | 2383 | §17.2 | — |
+| `command-remote-remove` | 2414 | §17.2 | — |
+| `command-remote-push` | 2429 | §17.2 | — |
+| `command-remote-pull` | 2466 | §17.2 | — |
+| `command-remote-sync` | 2500 | §17.2 | — |
+| `command-remote` | 2552 | §17.2 | — |
+| `main` | 2577 | §1.1 | — |
 
 ---
 
@@ -958,5 +1018,5 @@ Every function defined in `cli.scm` and which plan section covers it:
 - No crashes on invalid input (every command has error-path tests)
 - Clear error messages for all failure cases (stderr + exit 1)
 - All integration scenarios complete successfully
-- Coverage map accounts for every `define` in `cli.scm` (74 functions)
+- Coverage map accounts for every `define` in `cli.scm` (80 functions)
 - Store uses flat hash directories (no two-char prefix split)
