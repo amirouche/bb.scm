@@ -74,6 +74,9 @@
       (display "  bb print <ref>                          Output Chez Scheme library with all dependencies\n")
       (display "  bb anchor <remote>                     Push combiners to a remote store\n")
       (display "  bb refactor <ref> <ref> <ref> [<ref>]   Replace old with new in root tree\n")
+      (display "  bb mapping list <ref>                   List all mappings for a combiner\n")
+      (display "  bb mapping delete <ref> <hash-prefix>   Delete a mapping by hash prefix\n")
+      (display "  bb mapping set <ref> <key> <value>      Set a mapping entry (0=name, 1+=params)\n")
       (display "  bb remote add <name> <path>             Add a remote store endpoint\n")
       (display "  bb remote list                          List configured remote store endpoints\n")
       (display "  bb remote remove <name>                 Remove a remote store endpoint\n")
@@ -1400,12 +1403,7 @@
            (lambda (expression)
              (let* ((defined-name (cadr expression))
                     (value-expression (caddr expression))
-                    (check-self-name
-                     (let ((s (symbol->string defined-name)))
-                       (if (and (> (string-length s) 7)
-                                (string=? (substring s 0 7) "~check-"))
-                           (string->symbol (substring s 7 (string-length s)))
-                           defined-name))))
+                    (check-self-name defined-name))
                (let-values (((normalized-tree mapping)
                              (normalize-combiner value-expression
                                                  check-self-name
@@ -1599,7 +1597,13 @@
                           (ck-surface (denormalize-tree ck-body ck-mapping hash->name))
                           (ck-name-entry (assv 0 ck-mapping))
                           (ck-name (if ck-name-entry
-                                       (string->symbol (string-append "~check-" (cdr ck-name-entry)))
+                                       (let ((n (cdr ck-name-entry)))
+                                         ;; Use name as-is if it already has ~check- prefix
+                                         (string->symbol
+                                          (if (and (> (string-length n) 7)
+                                                   (string=? (substring n 0 7) "~check-"))
+                                              n
+                                              (string-append "~check-" n))))
                                        (string->symbol (string-append "~check-" name-str)))))
                      (display "\n" buffer)
                      (display (define->pretty-string ck-name ck-surface) buffer))))
@@ -1851,7 +1855,11 @@
                             (check-mapping (cdr (assq 'mapping check-map)))
                             (check-name-entry (assv 0 check-mapping))
                             (check-name (if check-name-entry
-                                            (string-append "~check-" (cdr check-name-entry))
+                                            (let ((n (cdr check-name-entry)))
+                                              (if (and (> (string-length n) 7)
+                                                       (string=? (substring n 0 7) "~check-"))
+                                                  n
+                                                  (string-append "~check-" n)))
                                             (string-append "~check-" name))))
                        (pretty-print-one-combiner
                         root hash->name check-body check-mapping check-name)))
@@ -2689,6 +2697,142 @@
            (display "'\n")]))))
 
   ;; ================================================================
+  ;; bb mapping — view, delete, and set mapping entries
+  ;; ================================================================
+
+  (define command-mapping-list
+    (lambda (root rest)
+      (when (null? rest)
+        (display "bb mapping list: missing ref\n" (current-error-port))
+        (exit 1))
+      (let* ((name-index (store-build-name-index root))
+             (hash (let-values (((h l m) (resolve-ref name-index root (car rest)))) h))
+             (mappings (store-list-mappings root hash))
+             (hash->name (make-hash->name name-index root))
+             (display-name (or (hash->name hash) (substring hash 0 12))))
+        (display "Mappings for ") (display display-name)
+        (display " [") (display (substring hash 0 12)) (display "]:\n")
+        (if (null? mappings)
+            (display "  (none)\n")
+            (for-each
+             (lambda (entry)
+               (let* ((mapping-hash (car entry))
+                      (map-data (cdr entry))
+                      (lang (let ((l (assq 'language map-data)))
+                              (if l (cdr l) "?")))
+                      (mapping (let ((m (assq 'mapping map-data)))
+                                 (if m (cdr m) '())))
+                      (name-entry (assv 0 mapping))
+                      (name (if name-entry (cdr name-entry) "?")))
+                 (display "  ")
+                 (display (substring mapping-hash 0 12))
+                 (display "  lang=") (display lang)
+                 (display "  name=") (display name)
+                 (for-each
+                  (lambda (pair)
+                    (when (> (car pair) 0)
+                      (display "  ") (display (car pair))
+                      (display "=") (display (cdr pair))))
+                  mapping)
+                 (newline)))
+             mappings)))))
+
+  (define command-mapping-delete
+    (lambda (root rest)
+      (when (< (length rest) 2)
+        (display "bb mapping delete: usage: bb mapping delete <ref> <mapping-hash-prefix>\n"
+                 (current-error-port))
+        (exit 1))
+      (let* ((name-index (store-build-name-index root))
+             (combiner-hash (let-values (((h l m) (resolve-ref name-index root (car rest)))) h))
+             (prefix (cadr rest))
+             (mappings (store-list-mappings root combiner-hash))
+             (matches (filter (lambda (entry)
+                                (and (>= (string-length (car entry)) (string-length prefix))
+                                     (string=? prefix
+                                               (substring (car entry) 0 (string-length prefix)))))
+                              mappings)))
+        (cond
+         ((null? matches)
+          (display "bb mapping delete: no mapping matching prefix '")
+          (display prefix) (display "'\n" (current-error-port))
+          (exit 1))
+         ((> (length matches) 1)
+          (display "bb mapping delete: ambiguous prefix '")
+          (display prefix) (display "' matches ")
+          (display (length matches)) (display " mappings\n" (current-error-port))
+          (exit 1))
+         (else
+          (let ((mapping-hash (caar matches)))
+            (store-delete-mapping! root combiner-hash mapping-hash)
+            (display "deleted mapping ") (display (substring mapping-hash 0 12))
+            (newline)))))))
+
+  (define command-mapping-set
+    (lambda (root rest)
+      (when (< (length rest) 3)
+        (display "bb mapping set: usage: bb mapping set <ref> <key> <value>\n"
+                 (current-error-port))
+        (display "  key is an integer (0=self-name, 1+=parameter names)\n"
+                 (current-error-port))
+        (exit 1))
+      (let* ((name-index (store-build-name-index root))
+             (combiner-hash (let-values (((h l m) (resolve-ref name-index root (car rest)))) h))
+             (key (let ((k (string->number (cadr rest))))
+                    (unless k
+                      (display "bb mapping set: key must be an integer\n" (current-error-port))
+                      (exit 1))
+                    k))
+             (value (caddr rest))
+             ;; Load the current preferred mapping
+             (map-data (guard (exn (#t #f))
+                         (store-load-preferred-mapping root combiner-hash)))
+             (old-mapping (if map-data (cdr (assq 'mapping map-data)) '()))
+             (old-lang (if map-data (cdr (assq 'language map-data)) "en"))
+             (old-doc (if map-data
+                          (let ((d (assq 'doc map-data))) (if d (cdr d) ""))
+                          ""))
+             ;; Update the mapping alist
+             (new-mapping (cons (cons key value)
+                                (filter (lambda (e) (not (= (car e) key)))
+                                        old-mapping)))
+             ;; Store as a new mapping
+             (new-hash (store-mapping! root combiner-hash old-lang new-mapping old-doc)))
+        ;; Delete the old mapping if it exists
+        (when map-data
+          (let ((mappings (store-list-mappings root combiner-hash)))
+            (for-each
+             (lambda (entry)
+               (unless (string=? (car entry) new-hash)
+                 (let ((entry-lang (let ((l (assq 'language (cdr entry))))
+                                     (if l (cdr l) ""))))
+                   (when (string=? entry-lang old-lang)
+                     (store-delete-mapping! root combiner-hash (car entry))))))
+             mappings)))
+        (display "mapping updated: position ")
+        (display key) (display " = \"") (display value)
+        (display "\" [") (display (substring new-hash 0 12))
+        (display "]\n"))))
+
+  (define command-mapping
+    (lambda (arguments)
+      (when (null? arguments)
+        (display "bb mapping: missing subcommand (list, delete, set)\n"
+                 (current-error-port))
+        (exit 1))
+      (let* ((subcmd (car arguments))
+             (rest (cdr arguments))
+             (root (store-find-root (current-directory))))
+        (case (string->symbol subcmd)
+          [(list) (command-mapping-list root rest)]
+          [(delete) (command-mapping-delete root rest)]
+          [(set) (command-mapping-set root rest)]
+          [else
+           (display "bb mapping: unknown subcommand '")
+           (display subcmd)
+           (display "'\n")]))))
+
+  ;; ================================================================
   ;; Main entry point
   ;; ================================================================
 
@@ -2719,6 +2863,7 @@
                 [(worklog) (command-worklog rest)]
                 [(validate) (command-validate)]
                 [(anchor) (command-anchor rest)]
+                [(mapping) (command-mapping rest)]
                 [(remote) (command-remote rest)]
                 [(run) (command-run rest)]
                 [(status) (command-status)]

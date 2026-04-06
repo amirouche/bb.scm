@@ -47,6 +47,8 @@
           ~check-store-load-checks
           store-remote-entry-url
           store-remote-entry-path
+          store-delete-mapping!
+          store-list-mappings
           store-remote-entry-read-only?
           store-current-iso-timestamp
           store-timestamp-request!
@@ -178,6 +180,32 @@
           (call-with-output-file map-path
             (lambda (port) (display content port))))
         mapping-hash)))
+
+  ;; Delete a specific mapping by its hash.
+  (define store-delete-mapping!
+    (lambda (root function-hash mapping-hash)
+      (let ((map-directory (store-path-join (store-combiner-directory root function-hash)
+                                       "mappings" mapping-hash)))
+        (when (file-exists? map-directory)
+          (store-delete-directory! map-directory)))))
+
+  ;; List all mappings for a combiner.
+  ;; Returns list of (mapping-hash . map-data) pairs.
+  (define store-list-mappings
+    (lambda (root function-hash)
+      (let ((mappings-dir (store-path-join (store-combiner-directory root function-hash)
+                                       "mappings")))
+        (if (not (file-exists? mappings-dir))
+            '()
+            (let loop ((entries (directory-list mappings-dir)) (acc '()))
+              (if (null? entries)
+                  (reverse acc)
+                  (let* ((entry (car entries))
+                         (map-file (store-path-join mappings-dir entry "map.scm")))
+                    (if (file-exists? map-file)
+                        (let ((map-data (call-with-input-file map-file read)))
+                          (loop (cdr entries) (cons (cons entry map-data) acc)))
+                        (loop (cdr entries) acc)))))))))
 
   ;; Write a committed lineage record. Idempotent.
   (define store-record-lineage!

@@ -420,6 +420,12 @@
              (if (string? value)
                  (string-length value)
                  (error 'string-length "not a string" value))))
+          ;; 41: pk (peek — debug print to stderr, returns last arg)
+          ((41)
+           (display ";;; " (current-error-port))
+           (write arguments (current-error-port))
+           (newline (current-error-port))
+           (car (reverse arguments)))
           (else
            (error 'apply-primitive "unknown primitive index" index))))))
 
@@ -757,13 +763,14 @@
        "eq?" "+" "-" "*" "/" "<" ">" "="
        "display"
        "assume"
-       "string-length"))
+       "string-length"
+       "pk"))
 
   (define make-initial-environment
     (lambda ()
       (let loop ((index 2) ;; 0=gamma, 1=lambda are special forms; start at 2=xeno
                  (environment (name-environment-empty)))
-        (if (> index 40)
+        (if (> index 41)
             ;; Add well-known bindings
             (let* ((environment (name-environment-extend environment (string->symbol "#true") #t))
                    (environment (name-environment-extend environment (string->symbol "#false") #f))
