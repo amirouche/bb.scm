@@ -34,8 +34,8 @@
   ;; ================================================================
 
   ;; Primitive indices that imply numeric (Int) parameters
-  ;; 26:+ 27:- 28:* 29:/ 30:< 31:> 32:=
-  (define numeric-primitive-indices '(26 27 28 29 30 31 32))
+  ;; 31:+ 32:- 33:* 34:/ 35:< 36:> 37:=
+  (define numeric-primitive-indices '(31 32 33 34 35 36 37))
 
   ;; Walk a body expression to infer parameter types.
   ;; env is the closure environment (to resolve symbols to primitives).
@@ -167,21 +167,21 @@
                                     (translate-expr* a param-names combiner-name z3-name env))
                                   args)))
         (case index
-          ;; 26:+ 27:- 28:* 29:/
-          ((26) (string-append "(+ " (join-strings " " translated-args) ")"))
-          ((27) (string-append "(- " (join-strings " " translated-args) ")"))
-          ((28) (string-append "(* " (join-strings " " translated-args) ")"))
-          ((29) (string-append "(div " (join-strings " " translated-args) ")"))
-          ;; 30:< 31:> 32:=
-          ((30) (string-append "(< " (join-strings " " translated-args) ")"))
-          ((31) (string-append "(> " (join-strings " " translated-args) ")"))
-          ((32) (string-append "(= " (join-strings " " translated-args) ")"))
-          ;; 25: eq?
-          ((25) (string-append "(= " (join-strings " " translated-args) ")"))
-          ;; 17: integer? — type check, translate as true for Int vars
-          ((17) "true")
-          ;; 18: float? — type check
-          ((18) "true")
+          ;; 31:+ 32:- 33:* 34:/
+          ((31) (string-append "(+ " (join-strings " " translated-args) ")"))
+          ((32) (string-append "(- " (join-strings " " translated-args) ")"))
+          ((33) (string-append "(* " (join-strings " " translated-args) ")"))
+          ((34) (string-append "(div " (join-strings " " translated-args) ")"))
+          ;; 35:< 36:> 37:=
+          ((35) (string-append "(< " (join-strings " " translated-args) ")"))
+          ((36) (string-append "(> " (join-strings " " translated-args) ")"))
+          ((37) (string-append "(= " (join-strings " " translated-args) ")"))
+          ;; 30: eq?
+          ((30) (string-append "(= " (join-strings " " translated-args) ")"))
+          ;; 22: integer? — type check, translate as true for Int vars
+          ((22) "true")
+          ;; 23: float? — type check
+          ((23) "true")
           (else
            (error 'z3-translate
                   (string-append "unsupported primitive "
@@ -249,7 +249,7 @@
                           (name-environment-ref env head))))
                 (if (and val (mobius-primitive? val))
                     (let ((index (mobius-primitive-index val)))
-                      (if (memv index '(30 31 32 25)) ;; < > = eq?
+                      (if (memv index '(35 36 37 30)) ;; < > = eq?
                           "Bool"
                           "Int"))
                     "Int"))

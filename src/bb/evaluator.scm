@@ -267,7 +267,7 @@
                     (loop (cdr remaining)))))))))
 
   ;; ================================================================
-  ;; Primitive application (foundations 0-34)
+  ;; Primitive application (foundations 0-39)
   ;; ================================================================
 
   (define apply-primitive
@@ -275,22 +275,31 @@
       (let ((index (mobius-primitive-index primitive))
             (arguments (mobius-list->scheme-list argument-tree)))
         (case index
-          ;; 8: cons
-          ((8) (cons (car arguments) (cadr arguments)))
-          ;; 9: car
-          ((9)
+          ;; 2: xeno (foreign function call to Chez Scheme)
+          ((2)
+           (let ((procedure-name (car arguments))
+                 (procedure-arguments (cdr arguments)))
+             (unless (string? procedure-name)
+               (error 'xeno "first argument must be a string" procedure-name))
+             (let ((procedure (eval (string->symbol procedure-name))))
+               (apply procedure (mobius-list->scheme-list
+                            (build-argument-tree procedure-arguments))))))
+          ;; 9: cons
+          ((9) (cons (car arguments) (cadr arguments)))
+          ;; 10: car
+          ((10)
            (let ((value (car arguments)))
              (if (pair? value)
                  (car value)
                  (error 'car "not a pair" value))))
-          ;; 10: cdr
-          ((10)
+          ;; 11: cdr
+          ((11)
            (let ((value (car arguments)))
              (if (pair? value)
                  (cdr value)
                  (error 'cdr "not a pair" value))))
-          ;; 11: encapsulation-type
-          ((11)
+          ;; 12: encapsulation-type
+          ((12)
            (let ((type-id (car arguments)))
              (let* ((constructor
                      (make-mobius-primitive -1
@@ -324,23 +333,23 @@
                        (cons (make-mobius-closure make-predicate "capsule-predicate")
                              (cons (make-mobius-closure make-accessor "capsule-accessor")
                                    mobius-nil)))))))
-          ;; 12: box
-          ((12) (make-mobius-box (car arguments)))
-          ;; 13: unbox
-          ((13)
+          ;; 13: box
+          ((13) (make-mobius-box (car arguments)))
+          ;; 14: unbox
+          ((14)
            (let ((value (car arguments)))
              (if (mobius-box? value)
                  (mobius-box-ref value)
                  (error 'unbox "not a box" value))))
-          ;; 14: box!
-          ((14)
+          ;; 15: box!
+          ((15)
            (let ((box-value (car arguments))
                  (new-value (cadr arguments)))
              (if (mobius-box? box-value)
                  (begin (mobius-box-set! box-value new-value) mobius-void)
                  (error 'box! "not a box" box-value))))
-          ;; 15: call/cc
-          ((15)
+          ;; 16: call/cc
+          ((16)
            (let ((combiner (car arguments)))
              (call/cc
               (lambda (k)
@@ -349,46 +358,55 @@
                   (mobius-apply combiner
                                (build-argument-tree (list mobius-k))
                                environment))))))
-          ;; 16: continuation-apply
-          ((16)
+          ;; 17: continuation-apply
+          ((17)
            (let ((continuation (car arguments))
                  (value (cadr arguments)))
              (if (mobius-continuation? continuation)
                  ((mobius-continuation-procedure continuation) value)
                  (error 'continuation-apply "not a continuation" continuation))))
-          ;; 17-24: type predicates
-          ((17) (if (mobius-integer? (car arguments)) #t #f))
-          ((18) (if (mobius-float? (car arguments)) #t #f))
-          ((19) (if (mobius-char? (car arguments)) #t #f))
-          ((20) (if (mobius-string? (car arguments)) #t #f))
-          ((21) (if (mobius-pair? (car arguments)) #t #f))
-          ((22) (if (mobius-box? (car arguments)) #t #f))
-          ((23) (if (or (mobius-combiner? (car arguments))
+          ;; 18-21: char/string conversion
+          ((18) (char->integer (car arguments)))     ;; char->integer
+          ((19) (integer->char (car arguments)))     ;; integer->char
+          ((20) (list->string                        ;; list->string
+                 (mobius-list->scheme-list (car arguments))))
+          ((21) (let ((chars (string->list (car arguments))))  ;; string->list
+                  (let loop ((remaining (reverse chars)) (acc mobius-nil))
+                    (if (null? remaining) acc
+                        (loop (cdr remaining) (cons (car remaining) acc))))))
+          ;; 22-29: type predicates
+          ((22) (if (mobius-integer? (car arguments)) #t #f))
+          ((23) (if (mobius-float? (car arguments)) #t #f))
+          ((24) (if (mobius-char? (car arguments)) #t #f))
+          ((25) (if (mobius-string? (car arguments)) #t #f))
+          ((26) (if (mobius-pair? (car arguments)) #t #f))
+          ((27) (if (mobius-box? (car arguments)) #t #f))
+          ((28) (if (or (mobius-combiner? (car arguments))
                         (native-combiner? (car arguments))) #t #f))
-          ((24) (if (mobius-continuation? (car arguments)) #t #f))
-          ;; 25: eq?
-          ((25)
+          ((29) (if (mobius-continuation? (car arguments)) #t #f))
+          ;; 30: eq?
+          ((30)
            (let ((a (car arguments)) (b (cadr arguments)))
              (if (eq? a b) #t #f)))
-          ;; 26-29: arithmetic
-          ((26) (apply + arguments))   ;; +
-          ((27) (apply - arguments))   ;; -
-          ((28) (apply * arguments))   ;; *
-          ((29)                   ;; /
+          ;; 31-34: arithmetic
+          ((31) (apply + arguments))   ;; +
+          ((32) (apply - arguments))   ;; -
+          ((33) (apply * arguments))   ;; *
+          ((34)                   ;; /
            (let ((a (car arguments)) (b (cadr arguments)))
              (when (zero? b) (error '/ "division by zero"))
              (/ a b)))
-          ;; 30-32: comparison
-          ((30) (if (< (car arguments) (cadr arguments)) #t #f))   ;; <
-          ((31) (if (> (car arguments) (cadr arguments)) #t #f))   ;; >
-          ((32) (if (= (car arguments) (cadr arguments)) #t #f))   ;; =
-          ;; 33: display
-          ((33)
+          ;; 35-37: comparison
+          ((35) (if (< (car arguments) (cadr arguments)) #t #f))   ;; <
+          ((36) (if (> (car arguments) (cadr arguments)) #t #f))   ;; >
+          ((37) (if (= (car arguments) (cadr arguments)) #t #f))   ;; =
+          ;; 38: display
+          ((38)
            (let ((value (car arguments)))
              (mobius-display value)
              mobius-void))
-          ;; 34: assume (runtime assertion)
-          ((34)
+          ;; 39: assume (runtime assertion)
+          ((39)
            (let ((test (car arguments))
                  (message (if (> (length arguments) 1) (cadr arguments) "assertion failed")))
              (if (mobius-truthy? test)
@@ -396,15 +414,6 @@
                  (error 'assume
                         (if (string? message) message "assertion failed")
                         test))))
-          ;; 35: xeno (foreign function call to Chez Scheme)
-          ((35)
-           (let ((procedure-name (car arguments))
-                 (procedure-arguments (cdr arguments)))
-             (unless (string? procedure-name)
-               (error 'xeno "first argument must be a string" procedure-name))
-             (let ((procedure (eval (string->symbol procedure-name))))
-               (apply procedure (mobius-list->scheme-list
-                            (build-argument-tree procedure-arguments))))))
           (else
            (error 'apply-primitive "unknown primitive index" index))))))
 
@@ -733,21 +742,21 @@
   ;; ================================================================
 
   (define primitive-names
-    '#("gamma" "lambda" "if" "and" "or" "begin" "define" "guard"
+    '#("gamma" "lambda" "xeno" "if" "and" "or" "begin" "define" "guard"
        "cons" "car" "cdr" "encapsulation-type" "box" "unbox" "box!"
        "call/cc" "continuation-apply"
+       "char->integer" "integer->char" "list->string" "string->list"
        "integer?" "float?" "char?" "string?" "pair?" "box?"
        "combiner?" "continuation?"
        "eq?" "+" "-" "*" "/" "<" ">" "="
        "display"
-       "assume"
-       "xeno"))
+       "assume"))
 
   (define make-initial-environment
     (lambda ()
-      (let loop ((index 8) ;; primitives 0-7 are special forms, not values
+      (let loop ((index 2) ;; 0=gamma, 1=lambda are special forms; start at 2=xeno
                  (environment (name-environment-empty)))
-        (if (> index 35)
+        (if (> index 39)
             ;; Add well-known bindings
             (let* ((environment (name-environment-extend environment (string->symbol "#true") #t))
                    (environment (name-environment-extend environment (string->symbol "#false") #f))
@@ -760,11 +769,14 @@
                            (lambda (value)
                              (exit (if (integer? value) value 1)))))))
               environment)
-            (let* ((name (string->symbol (vector-ref primitive-names index)))
-                   (primitive (make-mobius-primitive index
-                                (vector-ref primitive-names index))))
-              (loop (+ index 1)
-                    (name-environment-extend environment name primitive)))))))
+            (if (and (>= index 3) (<= index 8))
+                ;; 3=if, 4=and, 5=or, 6=begin, 7=define, 8=guard are special forms
+                (loop (+ index 1) environment)
+                (let* ((name (string->symbol (vector-ref primitive-names index)))
+                       (primitive (make-mobius-primitive index
+                                    (vector-ref primitive-names index))))
+                  (loop (+ index 1)
+                        (name-environment-extend environment name primitive))))))))
 
   ;; ================================================================
   ;; De Bruijn Normalization
@@ -843,16 +855,16 @@
                   (else-expression (if (null? (cdddr expression))
                                  '(mobius-primitive-constant-ref 3)
                                  (rec (cadddr expression)))))
-              (list '(mobius-primitive-ref 2) test then else-expression)))
+              (list '(mobius-primitive-ref 3) test then else-expression)))
 
            ;; (and expressions ...)
            ((eq? head 'and)
-            (cons '(mobius-primitive-ref 3)
+            (cons '(mobius-primitive-ref 4)
                   (map rec (cdr expression))))
 
            ;; (or expressions ...)
            ((eq? head 'or)
-            (cons '(mobius-primitive-ref 4)
+            (cons '(mobius-primitive-ref 5)
                   (map rec (cdr expression))))
 
            ;; (begin expressions ...)
@@ -872,19 +884,19 @@
                    (extended-environment
                     (append (map (lambda (n) (cons n 'define-local)) define-names)
                             variable-environment)))
-              (cons '(mobius-primitive-ref 5)
+              (cons '(mobius-primitive-ref 6)
                     (map (lambda (e) (rec-env e extended-environment))
                          body-expressions))))
 
            ;; (define name expression) inside body
            ((eq? head 'define)
-            (list '(mobius-primitive-ref 6)
+            (list '(mobius-primitive-ref 7)
                   (cadr expression)
                   (rec (caddr expression))))
 
            ;; (guard ...) — pass through for now
            ((eq? head 'guard)
-            (cons '(mobius-primitive-ref 7)
+            (cons '(mobius-primitive-ref 8)
                   (map rec (cdr expression))))
 
            ;; Nested gamma/lambda — normalize as nested combiner
@@ -1066,23 +1078,23 @@
             ;; Normalized lambda: ((mobius-primitive-ref 1) pattern body)
             [((mobius-primitive-ref 1) ,pattern ,body)
              (cons* 'lambda (denormalize-lambda-parameters pattern) (denormalize-body-list body))]
-            ;; Normalized if: ((mobius-primitive-ref 2) test then else)
-            [((mobius-primitive-ref 2) ,test ,then ,else-)
+            ;; Normalized if: ((mobius-primitive-ref 3) test then else)
+            [((mobius-primitive-ref 3) ,test ,then ,else-)
              (list 'if (denormalize-body test) (denormalize-body then) (denormalize-body else-))]
-            ;; Normalized and: ((mobius-primitive-ref 3) exprs ...)
-            [((mobius-primitive-ref 3) ,exprs ...)
-             (cons 'and (map denormalize-body exprs))]
-            ;; Normalized or: ((mobius-primitive-ref 4) exprs ...)
+            ;; Normalized and: ((mobius-primitive-ref 4) exprs ...)
             [((mobius-primitive-ref 4) ,exprs ...)
-             (cons 'or (map denormalize-body exprs))]
-            ;; Normalized begin: ((mobius-primitive-ref 5) exprs ...)
+             (cons 'and (map denormalize-body exprs))]
+            ;; Normalized or: ((mobius-primitive-ref 5) exprs ...)
             [((mobius-primitive-ref 5) ,exprs ...)
+             (cons 'or (map denormalize-body exprs))]
+            ;; Normalized begin: ((mobius-primitive-ref 6) exprs ...)
+            [((mobius-primitive-ref 6) ,exprs ...)
              (cons 'begin (map denormalize-body exprs))]
-            ;; Normalized define: ((mobius-primitive-ref 6) name expr)
-            [((mobius-primitive-ref 6) ,name ,value)
+            ;; Normalized define: ((mobius-primitive-ref 7) name expr)
+            [((mobius-primitive-ref 7) ,name ,value)
              (list 'define name (denormalize-body value))]
-            ;; Normalized guard: ((mobius-primitive-ref 7) parts ...)
-            [((mobius-primitive-ref 7) ,parts ...)
+            ;; Normalized guard: ((mobius-primitive-ref 8) parts ...)
+            [((mobius-primitive-ref 8) ,parts ...)
              (cons 'guard (map denormalize-body parts))]
             ;; Application: (head args ...)
             [(,elements ...) (guard (pair? elements))
@@ -1124,7 +1136,7 @@
       (define denormalize-body-list
         (lambda (body)
           (match body
-            [((mobius-primitive-ref 5) ,exprs ...)
+            [((mobius-primitive-ref 6) ,exprs ...)
              (map denormalize-body exprs)]
             [,other (list (denormalize-body other))])))
 
@@ -1333,7 +1345,7 @@
       ;; (gamma ((,head . ,(tail)) (+ head tail)) (#nil 0))
       ;; Expected: ((mobius-primitive-ref 0)
       ;;            (((mobius-bind 1) . (mobius-catamorphic-bind 2))
-      ;;             ((mobius-primitive-ref 26) (mobius-variable 1) (mobius-variable 2)))
+      ;;             ((mobius-primitive-ref 31) (mobius-variable 1) (mobius-variable 2)))
       ;;            (#nil 0))
       (let* ((source "(gamma ((,head . ,(tail)) (+ head tail)) (#nil 0))")
              (parsed (car (mobius-read-all-string source))))
@@ -1344,9 +1356,9 @@
           (let ((clause1 (cadr tree)))
             (assert (equal? '(mobius-bind 1) (caar clause1)))
             (assert (equal? '(mobius-catamorphic-bind 2) (cdar clause1)))
-            ;; Body: (+ head tail) => ((mobius-primitive-ref 26) (mobius-variable 1) (mobius-variable 2))
+            ;; Body: (+ head tail) => ((mobius-primitive-ref 31) (mobius-variable 1) (mobius-variable 2))
             (let ((body (cadr clause1)))
-              (assert (equal? '(mobius-primitive-ref 26) (car body)))
+              (assert (equal? '(mobius-primitive-ref 31) (car body)))
               (assert (equal? '(mobius-variable 1) (cadr body)))
               (assert (equal? '(mobius-variable 2) (caddr body)))))
           ;; Second clause: (#nil 0)
@@ -1363,11 +1375,11 @@
       ;; (lambda (n) (if (= n 0) 1 (* n (factorial (- n 1)))))
       ;; Expected: ((mobius-primitive-ref 1)
       ;;            (mobius-bind 1)
-      ;;            ((mobius-primitive-ref 2)
-      ;;             ((mobius-primitive-ref 32) (mobius-variable 1) 0)
+      ;;            ((mobius-primitive-ref 3)
+      ;;             ((mobius-primitive-ref 37) (mobius-variable 1) 0)
       ;;             1
-      ;;             ((mobius-primitive-ref 28) (mobius-variable 1)
-      ;;              ((mobius-variable 0) ((mobius-primitive-ref 27) (mobius-variable 1) 1)))))
+      ;;             ((mobius-primitive-ref 33) (mobius-variable 1)
+      ;;              ((mobius-variable 0) ((mobius-primitive-ref 32) (mobius-variable 1) 1)))))
       (let* ((source "(lambda (n) (if (= n 0) 1 (* n (factorial (- n 1)))))")
              (parsed (car (mobius-read-all-string source))))
         (let-values (((tree mapping) (normalize-combiner parsed 'factorial no-registry)))
@@ -1376,12 +1388,12 @@
           ;; Pattern: (mobius-bind 1) . #nil
           (let ((pattern (cadr tree)))
             (assert (equal? '(mobius-bind 1) (car pattern))))
-          ;; Body starts with if = (mobius-primitive-ref 2)
+          ;; Body starts with if = (mobius-primitive-ref 3)
           (let ((body (caddr tree)))
-            (assert (equal? '(mobius-primitive-ref 2) (car body)))
-            ;; Test: (= n 0) => ((mobius-primitive-ref 32) (mobius-variable 1) 0)
+            (assert (equal? '(mobius-primitive-ref 3) (car body)))
+            ;; Test: (= n 0) => ((mobius-primitive-ref 37) (mobius-variable 1) 0)
             (let ((test (cadr body)))
-              (assert (equal? '(mobius-primitive-ref 32) (car test)))
+              (assert (equal? '(mobius-primitive-ref 37) (car test)))
               (assert (equal? '(mobius-variable 1) (cadr test)))
               (assert (= 0 (caddr test)))))
           ;; Mapping: 0 -> "factorial", 1 -> "n"
