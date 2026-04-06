@@ -791,7 +791,23 @@
   ;; - variable-environment: alist of (symbol . index) for bound variables
   ;; - registry-lookup: procedure (symbol -> string-or-#f)
   (define normalize-body
-    (lambda (expression variable-environment registry-lookup)
+    (lambda (expression variable-environment registry-lookup . optional)
+      ;; Optional: next-index-box and collected-names-box for nested lambda support.
+      ;; next-index-box: a box holding the next available de Bruijn index.
+      ;; collected-names-box: a box holding a list of (index . "name") pairs.
+      (let ((next-index-box (if (pair? optional) (car optional) #f))
+            (collected-names-box (if (and (pair? optional) (pair? (cdr optional)))
+                                     (cadr optional) #f)))
+        (define (rec e)
+          (if next-index-box
+              (normalize-body e variable-environment registry-lookup
+                              next-index-box collected-names-box)
+              (normalize-body e variable-environment registry-lookup)))
+        (define (rec-env e env)
+          (if next-index-box
+              (normalize-body e env registry-lookup
+                              next-index-box collected-names-box)
+              (normalize-body e env registry-lookup)))
       (cond
        ;; Self-evaluating atoms: sentinels become (mobius-primitive-constant-ref N)
        ((self-evaluating? expression)
@@ -822,24 +838,22 @@
           (cond
            ;; (if test then else)
            ((eq? head 'if)
-            (let ((test (normalize-body (cadr expression) variable-environment registry-lookup))
-                  (then (normalize-body (caddr expression) variable-environment registry-lookup))
+            (let ((test (rec (cadr expression)))
+                  (then (rec (caddr expression)))
                   (else-expression (if (null? (cdddr expression))
                                  '(mobius-primitive-constant-ref 3)
-                                 (normalize-body (cadddr expression) variable-environment registry-lookup))))
+                                 (rec (cadddr expression)))))
               (list '(mobius-primitive-ref 2) test then else-expression)))
 
            ;; (and expressions ...)
            ((eq? head 'and)
             (cons '(mobius-primitive-ref 3)
-                  (map (lambda (e) (normalize-body e variable-environment registry-lookup))
-                       (cdr expression))))
+                  (map rec (cdr expression))))
 
            ;; (or expressions ...)
            ((eq? head 'or)
             (cons '(mobius-primitive-ref 4)
-                  (map (lambda (e) (normalize-body e variable-environment registry-lookup))
-                       (cdr expression))))
+                  (map rec (cdr expression))))
 
            ;; (begin expressions ...)
            ;; Pre-scan for internal defines and add names to variable-environment
@@ -859,20 +873,19 @@
                     (append (map (lambda (n) (cons n 'define-local)) define-names)
                             variable-environment)))
               (cons '(mobius-primitive-ref 5)
-                    (map (lambda (e) (normalize-body e extended-environment registry-lookup))
+                    (map (lambda (e) (rec-env e extended-environment))
                          body-expressions))))
 
            ;; (define name expression) inside body
            ((eq? head 'define)
             (list '(mobius-primitive-ref 6)
                   (cadr expression)
-                  (normalize-body (caddr expression) variable-environment registry-lookup)))
+                  (rec (caddr expression))))
 
            ;; (guard ...) — pass through for now
            ((eq? head 'guard)
             (cons '(mobius-primitive-ref 7)
-                  (map (lambda (e) (normalize-body e variable-environment registry-lookup))
-                       (cdr expression))))
+                  (map rec (cdr expression))))
 
            ;; Nested gamma/lambda — normalize as nested combiner
            ((eq? head 'gamma)
@@ -884,21 +897,23 @@
                              (let ((pattern (car clause))
                                    (body (cadr clause)))
                                (list pattern
-                                     (normalize-body body inner-variable-environment registry-lookup))))
+                                     (rec-env body inner-variable-environment))))
                            processed)))
                 (cons '(mobius-primitive-ref 0) normalized-clauses))))
 
            ((eq? head 'lambda)
             (let* ((parameters (cadr expression))
                    (body-expressions (cddr expression))
+                   ;; Use next-index-box if available, otherwise start at 1
+                   (start-index (if next-index-box (unbox next-index-box) 1))
                    (name-alist
-                    (let loop ((parameters parameters) (index 1) (alist '()))
+                    (let loop ((parameters parameters) (index start-index) (alist '()))
                       (if (null? parameters)
                           (reverse alist)
                           (loop (cdr parameters) (+ index 1)
                                 (cons (cons (car parameters) index) alist)))))
                    (pattern
-                    (let loop ((parameters parameters) (index 1))
+                    (let loop ((parameters parameters) (index start-index))
                       (if (null? parameters)
                           '()
                           (cons (list 'mobius-bind index)
@@ -906,20 +921,27 @@
                    (body (if (= 1 (length body-expressions))
                              (car body-expressions)
                              (cons 'begin body-expressions)))
+                   ;; Update next-index-box and collected-names-box
+                   (_ (when next-index-box
+                        (set-box! next-index-box (+ start-index (length parameters)))
+                        (set-box! collected-names-box
+                                  (append (unbox collected-names-box)
+                                          (map (lambda (pair)
+                                                 (cons (cdr pair)
+                                                       (symbol->string (car pair))))
+                                               name-alist)))))
                    (inner-variable-environment (append name-alist variable-environment))
-                   (normalized-body (normalize-body body inner-variable-environment registry-lookup)))
+                   (normalized-body (rec-env body inner-variable-environment)))
               (list '(mobius-primitive-ref 1) pattern normalized-body)))
 
            ;; Application: (f arguments ...)
            (else
-            (let ((normalized-head (normalize-body head variable-environment registry-lookup))
-                  (normalized-arguments (map (lambda (e)
-                                          (normalize-body e variable-environment registry-lookup))
-                                        (cdr expression))))
+            (let ((normalized-head (rec head))
+                  (normalized-arguments (map rec (cdr expression))))
               (cons normalized-head normalized-arguments))))))
 
        (else
-        (error 'normalize-body "unknown expression" expression)))))
+        (error 'normalize-body "unknown expression" expression))))))
 
   ;; Normalize a combiner expression.
   ;; - expression: the parsed source expression (e.g. (gamma ...) or (lambda ...))
@@ -934,18 +956,26 @@
         (let ((processed (process-gamma-clauses (cdr expression))))
           (let* ((all-names (apply append (map caddr processed)))
                  (variable-environment (cons (cons self-name 0) all-names))
+                 ;; Track indices and names for nested lambdas
+                 (max-index (if (null? all-names) 0
+                                (apply max (map cdr all-names))))
+                 (next-index-box (box (+ max-index 1)))
+                 (collected-names-box (box '()))
                  (normalized-clauses
                   (map (lambda (clause)
                          (let ((pattern (car clause))
                                (body (cadr clause)))
                            (list pattern
-                                 (normalize-body body variable-environment registry-lookup))))
+                                 (normalize-body body variable-environment registry-lookup
+                                                 next-index-box collected-names-box))))
                        processed))
-                 (mapping (cons (cons 0 (symbol->string self-name))
-                                (map (lambda (pair)
-                                       (cons (cdr pair)
-                                             (symbol->string (car pair))))
-                                     all-names))))
+                 (mapping (append
+                           (cons (cons 0 (symbol->string self-name))
+                                 (map (lambda (pair)
+                                        (cons (cdr pair)
+                                              (symbol->string (car pair))))
+                                      all-names))
+                           (unbox collected-names-box))))
             (values (cons '(mobius-primitive-ref 0) normalized-clauses)
                     mapping))))
       (define (normalize-lambda)
@@ -967,12 +997,18 @@
                          (car body-expressions)
                          (cons 'begin body-expressions)))
                (variable-environment (cons (cons self-name 0) name-alist))
-               (normalized-body (normalize-body body variable-environment registry-lookup))
-               (mapping (cons (cons 0 (symbol->string self-name))
-                              (map (lambda (pair)
-                                     (cons (cdr pair)
-                                           (symbol->string (car pair))))
-                                   name-alist))))
+               ;; Track indices and names for nested lambdas
+               (next-index-box (box (+ 1 (length parameters))))
+               (collected-names-box (box '()))
+               (normalized-body (normalize-body body variable-environment registry-lookup
+                                                next-index-box collected-names-box))
+               (mapping (append
+                         (cons (cons 0 (symbol->string self-name))
+                               (map (lambda (pair)
+                                      (cons (cdr pair)
+                                            (symbol->string (car pair))))
+                                    name-alist))
+                         (unbox collected-names-box))))
           (values (list '(mobius-primitive-ref 1)
                         pattern
                         normalized-body)
