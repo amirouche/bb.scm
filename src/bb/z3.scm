@@ -6,7 +6,9 @@
           *z3-max-string-length*
           ~check-z3-translate
           ~check-z3-generate
-          ~check-z3-parse-result)
+          ~check-z3-parse-result
+          ~check-z3-val-translate
+          ~check-z3-val-generate)
 
   (import (chezscheme)
           (bb values)
@@ -43,8 +45,47 @@
   ;; 21:string->list 25:string?
   (define string-primitive-indices '(21 25))
 
+  ;; Primitive indices that imply pair (Val) parameters
+  ;; 9:cons 10:car 11:cdr 26:pair?
+  (define pair-primitive-indices '(9 10 11 26))
+
+  ;; Val mode: when #t, all types become the heterogeneous Val sort
+  (define *val-mode* (make-parameter #f))
+
+  ;; Z3 algebraic datatype declaration for heterogeneous values
+  (define val-datatype-declaration
+    (string-append
+     "(declare-datatypes () ((Val\n"
+     "  (mk-int (val-int Int))\n"
+     "  (mk-bool (val-bool Bool))\n"
+     "  (mk-str (val-str String))\n"
+     "  (mk-pair (val-car Val) (val-cdr Val))\n"
+     "  (mk-nil))))"))
+
   ;; Maximum string length for bounded Z3 string proofs
   (define *z3-max-string-length* (make-parameter 7))
+
+  ;; Detect whether an expression uses pair-related primitives.
+  ;; Walks body looking for cons/car/cdr/pair? applications.
+  (define uses-pair-primitives?
+    (lambda (body env)
+      (let walk ((expr body))
+        (cond
+         ((pair? expr)
+          (let ((head (car expr)))
+            (or (and (symbol? head)
+                     (let ((val (guard (exn (#t #f))
+                                  (name-environment-ref env head))))
+                       (and val (mobius-primitive? val)
+                            (memv (mobius-primitive-index val) pair-primitive-indices)
+                            #t)))
+                (let loop ((parts expr))
+                  (cond
+                   ((null? parts) #f)
+                   ((pair? parts)
+                    (or (walk (car parts)) (loop (cdr parts))))
+                   (else #f))))))
+         (else #f)))))
 
   ;; Walk a body expression to infer parameter types.
   ;; env is the closure environment (to resolve symbols to primitives).
@@ -52,6 +93,8 @@
   ;; Returns an alist ((param-name . "Int") ...).
   (define infer-param-types
     (lambda (body env param-names)
+      (if (*val-mode*)
+          (map (lambda (p) (cons p "Val")) param-names)
       (let ((types (make-hashtable symbol-hash symbol=?)))
         ;; Default all params to Int
         (for-each (lambda (p) (hashtable-set! types p "Int")) param-names)
@@ -84,7 +127,7 @@
            (else (void))))
         ;; Convert hashtable to alist
         (map (lambda (p) (cons p (hashtable-ref types p "Int")))
-             param-names))))
+             param-names)))))
 
   ;; ================================================================
   ;; String/list helpers for Z3
@@ -192,6 +235,14 @@
   (define *extra-define-funs* (make-parameter '()))
   (define *translated-combiners* (make-parameter (make-hashtable symbol-hash symbol=?)))
 
+  ;; Val-mode string helpers: wrap/unwrap Val sort
+  (define val-unwrap-int
+    (lambda (s) (string-append "(val-int " s ")")))
+  (define val-unwrap-bool
+    (lambda (s) (string-append "(val-bool " s ")")))
+  (define val-unwrap-str
+    (lambda (s) (string-append "(val-str " s ")")))
+
   (define translate-expr
     (lambda (expr param-names combiner-name env)
       (let ((z3-name (z3-fun-name combiner-name)))
@@ -200,17 +251,30 @@
   (define translate-expr*
     (lambda (expr param-names combiner-name z3-name env)
       (cond
+       ;; Nil literal
+       ((null? expr)
+        (if (*val-mode*) "mk-nil"
+            (error 'z3-translate "nil not supported in non-val mode")))
        ;; Integer literal
        ((integer? expr)
-        (if (< expr 0)
-            (string-append "(- " (number->string (- expr)) ")")
-            (number->string expr)))
+        (let ((int-str (if (< expr 0)
+                           (string-append "(- " (number->string (- expr)) ")")
+                           (number->string expr))))
+          (if (*val-mode*)
+              (string-append "(mk-int " int-str ")")
+              int-str)))
        ;; Boolean
-       ((eq? expr #t) "true")
-       ((eq? expr #f) "false")
+       ((boolean? expr)
+        (let ((bool-str (if expr "true" "false")))
+          (if (*val-mode*)
+              (string-append "(mk-bool " bool-str ")")
+              bool-str)))
        ;; String literal
        ((string? expr)
-        (string-append "\"" expr "\""))
+        (let ((str-str (string-append "\"" expr "\"")))
+          (if (*val-mode*)
+              (string-append "(mk-str " str-str ")")
+              str-str)))
        ;; Symbol — parameter, combiner-under-test, or environment lookup
        ((symbol? expr)
         (cond
@@ -223,10 +287,19 @@
             (cond
              ((not val)
               (error 'z3-translate "unresolved symbol" expr))
-             ((integer? val) (number->string val))
-             ((string? val) (string-append "\"" val "\""))
-             ((eq? val #t) "true")
-             ((eq? val #f) "false")
+             ((integer? val)
+              (let ((s (number->string val)))
+                (if (*val-mode*) (string-append "(mk-int " s ")") s)))
+             ((string? val)
+              (let ((s (string-append "\"" val "\"")))
+                (if (*val-mode*) (string-append "(mk-str " s ")") s)))
+             ((eq? val #t)
+              (if (*val-mode*) "(mk-bool true)" "true"))
+             ((eq? val #f)
+              (if (*val-mode*) "(mk-bool false)" "false"))
+             ((null? val)
+              (if (*val-mode*) "mk-nil"
+                  (error 'z3-translate "nil not supported in non-val mode")))
              ;; Primitive — shouldn't appear bare
              ((mobius-primitive? val)
               (error 'z3-translate "bare primitive reference" expr))
@@ -240,13 +313,25 @@
           (cond
            ;; Special forms: if, and, or, begin, assume
            ((eq? head 'if)
-            (string-append "(ite " (rec (car args)) " "
-                           (rec (cadr args)) " "
-                           (rec (caddr args)) ")"))
+            (if (*val-mode*)
+                (string-append "(ite " (val-unwrap-bool (rec (car args))) " "
+                               (rec (cadr args)) " "
+                               (rec (caddr args)) ")")
+                (string-append "(ite " (rec (car args)) " "
+                               (rec (cadr args)) " "
+                               (rec (caddr args)) ")")))
            ((eq? head 'and)
-            (string-append "(and " (join-strings " " (map rec args)) ")"))
+            (if (*val-mode*)
+                (string-append "(mk-bool (and "
+                               (join-strings " " (map (lambda (a) (val-unwrap-bool (rec a))) args))
+                               "))")
+                (string-append "(and " (join-strings " " (map rec args)) ")")))
            ((eq? head 'or)
-            (string-append "(or " (join-strings " " (map rec args)) ")"))
+            (if (*val-mode*)
+                (string-append "(mk-bool (or "
+                               (join-strings " " (map (lambda (a) (val-unwrap-bool (rec a))) args))
+                               "))")
+                (string-append "(or " (join-strings " " (map rec args)) ")")))
            ((eq? head 'begin)
             (rec (car (reverse args))))
            ((eq? head 'assume)
@@ -263,8 +348,10 @@
                                ")"))
                ;; Primitive application
                ((and val (mobius-primitive? val))
-                (translate-primitive-app (mobius-primitive-index val)
-                                        args param-names combiner-name z3-name env))
+                (let ((index (mobius-primitive-index val)))
+                  (if (*val-mode*)
+                      (translate-primitive-app-val index args param-names combiner-name z3-name env)
+                      (translate-primitive-app index args param-names combiner-name z3-name env))))
                ;; Base library combiner (e.g., not)
                ((and val (mobius-user-combiner? val))
                 (translate-known-combiner head val args param-names combiner-name z3-name env))
@@ -318,6 +405,53 @@
                   (string-append "unsupported primitive "
                                  (number->string index))))))))
 
+  ;; Translate a primitive application in Val mode (heterogeneous sort)
+  (define translate-primitive-app-val
+    (lambda (index args param-names combiner-name z3-name env)
+      (let ((translated-args (map (lambda (a)
+                                    (translate-expr* a param-names combiner-name z3-name env))
+                                  args)))
+        (case index
+          ;; 31:+ 32:- 33:* 34:/ — unwrap Int, apply, rewrap Int
+          ((31) (string-append "(mk-int (+ " (join-strings " " (map val-unwrap-int translated-args)) "))"))
+          ((32) (string-append "(mk-int (- " (join-strings " " (map val-unwrap-int translated-args)) "))"))
+          ((33) (string-append "(mk-int (* " (join-strings " " (map val-unwrap-int translated-args)) "))"))
+          ((34) (string-append "(mk-int (div " (join-strings " " (map val-unwrap-int translated-args)) "))"))
+          ;; 35:< 36:> — unwrap Int, compare, rewrap Bool
+          ((35) (string-append "(mk-bool (< " (join-strings " " (map val-unwrap-int translated-args)) "))"))
+          ((36) (string-append "(mk-bool (> " (join-strings " " (map val-unwrap-int translated-args)) "))"))
+          ;; 37:= — unwrap Int, compare, rewrap Bool
+          ((37) (string-append "(mk-bool (= " (join-strings " " (map val-unwrap-int translated-args)) "))"))
+          ;; 30: eq? — structural equality on Val, rewrap Bool
+          ((30) (string-append "(mk-bool (= " (join-strings " " translated-args) "))"))
+          ;; 9: cons — both args already Val
+          ((9) (string-append "(mk-pair " (car translated-args) " " (cadr translated-args) ")"))
+          ;; 10: car
+          ((10) (string-append "(val-car " (car translated-args) ")"))
+          ;; 11: cdr
+          ((11) (string-append "(val-cdr " (car translated-args) ")"))
+          ;; 26: pair?
+          ((26) (string-append "(mk-bool ((_ is mk-pair) " (car translated-args) "))"))
+          ;; 22: integer?
+          ((22) (string-append "(mk-bool ((_ is mk-int) " (car translated-args) "))"))
+          ;; 23: float? — no float in Val sort
+          ((23) "(mk-bool false)")
+          ;; 25: string?
+          ((25) (string-append "(mk-bool ((_ is mk-str) " (car translated-args) "))"))
+          ;; 40: string-length — unwrap String, get length, rewrap Int
+          ((40) (string-append "(mk-int (str.len " (val-unwrap-str (car translated-args)) "))"))
+          ;; 18: char->integer
+          ((18) (string-append "(mk-int (str.to_code " (val-unwrap-str (car translated-args)) "))"))
+          ;; 19: integer->char
+          ((19) (string-append "(mk-str (str.from_code " (val-unwrap-int (car translated-args)) "))"))
+          ;; 20/21: list->string/string->list not yet supported in val mode
+          ((20 21)
+           (error 'z3-translate "list->string/string->list not yet supported in val mode"))
+          (else
+           (error 'z3-translate
+                  (string-append "unsupported primitive "
+                                 (number->string index))))))))
+
   ;; Translate a user combiner call. For known base-library combiners (not),
   ;; emit directly. For others, generate a define-fun and emit a call.
   (define translate-known-combiner
@@ -325,9 +459,10 @@
       (let ((name-str (symbol->string name)))
         (cond
          ((string=? name-str "not")
-          (string-append "(not "
-                         (translate-expr* (car args) param-names combiner-name z3-name env)
-                         ")"))
+          (let ((inner (translate-expr* (car args) param-names combiner-name z3-name env)))
+            (if (*val-mode*)
+                (string-append "(mk-bool (not " (val-unwrap-bool inner) "))")
+                (string-append "(not " inner ")"))))
          (else
           ;; Generate a define-fun for this combiner if not already done
           (let ((safe-name (z3-fun-name name)))
@@ -384,9 +519,10 @@
 
   ;; Infer the return type of an expression.
   ;; For now: if the outermost operation is comparison/boolean → Bool,
-  ;; otherwise → Int.
+  ;; otherwise → Int. In val mode, always "Val".
   (define infer-return-type
     (lambda (body env param-names)
+      (if (*val-mode*) "Val"
       (cond
        ((boolean? body) "Bool")
        ((integer? body) "Int")
@@ -413,17 +549,18 @@
                      (else "Int")))
                   "Int")))
            (else "Int"))))
-       (else "Int"))))
+       (else "Int")))))
 
   ;; Generate the full SMT-LIB2 problem.
   ;; property: the returned lambda (Z3 check)
   ;; combiner: the combiner-under-test
-  ;; Returns (values smt-string combiner-fun-name) or raises error.
+  ;; Returns (values smt-string mode val-mode?) or raises error.
   (define generate-smt-problem
     (lambda (property combiner)
       (parameterize ((*extra-define-funs* '())
                      (*translated-combiners* (make-hashtable symbol-hash symbol=?))
-                     (*string-helpers-emitted* #f))
+                     (*string-helpers-emitted* #f)
+                     (*val-mode* #f))
         (let* ((prop-clauses (mobius-combiner-clauses property))
                (prop-clause (car prop-clauses))
                (prop-body (cadr prop-clause))
@@ -440,6 +577,15 @@
                    ((pair? expr) (or (check (car expr)) (check (cdr expr))))
                    (else #f))))
                )
+          ;; Detect pair primitives → activate val mode
+          (when (or (uses-pair-primitives? prop-body prop-env)
+                    (and body-references-combiner?
+                         (let* ((clauses (mobius-combiner-clauses combiner))
+                                (clause (car clauses))
+                                (cbody (cadr clause))
+                                (cenv (mobius-combiner-environment combiner)))
+                           (uses-pair-primitives? cbody cenv))))
+            (*val-mode* #t))
           (let-values (((define-fun-str combiner-param-types)
                         (if body-references-combiner?
                             (generate-define-fun combiner combiner-name)
@@ -464,19 +610,26 @@
                 (*z3-string-bound* (extract-string-bound preconditions prop-env))
                 (let* ((precond-strs
                         (map (lambda (a)
-                               (string-append "(assert "
-                                              (translate-expr a prop-param-names
-                                                              combiner-name prop-env)
-                                              ")"))
+                               (let ((translated (translate-expr a prop-param-names
+                                                                 combiner-name prop-env)))
+                                 (string-append "(assert "
+                                                (if (*val-mode*)
+                                                    (val-unwrap-bool translated)
+                                                    translated)
+                                                ")")))
                              preconditions))
                        (goal-smt (translate-expr goal prop-param-names
                                                 combiner-name prop-env))
+                       (goal-smt-unwrapped
+                        (if (*val-mode*)
+                            (val-unwrap-bool goal-smt)
+                            goal-smt))
                        (goal-str
                         (if (eq? mode 'universal)
                             ;; Negate for validity: unsat = holds for all
-                            (string-append "(assert (not " goal-smt "))")
+                            (string-append "(assert (not " goal-smt-unwrapped "))")
                             ;; Assert directly: sat = witness exists
-                            (string-append "(assert " goal-smt ")")))
+                            (string-append "(assert " goal-smt-unwrapped ")")))
                        (comment
                         (if (eq? mode 'universal)
                             "; Negated property (unsat = holds for all)"
@@ -484,6 +637,11 @@
                        ;; Collect extra define-funs generated during translation
                        (extras (reverse (*extra-define-funs*)))
                        (smt (string-append
+                             ;; Val datatype declaration (if needed)
+                             (if (*val-mode*)
+                                 (string-append "; Heterogeneous value sort\n"
+                                                val-datatype-declaration "\n\n")
+                                 "")
                              (if (null? extras) ""
                                  (string-append
                                   "; Helper functions\n"
@@ -501,7 +659,7 @@
                              goal-str "\n\n"
                              "(check-sat)\n"
                              "(get-model)\n")))
-                  (values smt mode)))))))))
+                  (values smt mode (*val-mode*))))))))))
 
   ;; Find which symbol in the environment refers to the combiner-under-test.
   ;; Walks the environment alist looking for an eq? match.
@@ -525,6 +683,8 @@
   ;; the combiner-under-test. E.g., (f x) where f takes (a:Int) → x:Int
   (define infer-property-var-types
     (lambda (body prop-param-names combiner-name combiner-param-types env)
+      (if (*val-mode*)
+          (map (lambda (p) (cons p "Val")) prop-param-names)
       ;; First pass: infer directly from property body (string/numeric primitives)
       (let* ((body-types (infer-param-types body env prop-param-names))
              (types (make-hashtable symbol-hash symbol=?)))
@@ -545,7 +705,7 @@
                   (arg-loop (cdr args) (cdr ctypes)))))
             (for-each walk expr)))
         (map (lambda (p) (cons p (hashtable-ref types p "Int")))
-             prop-param-names))))
+             prop-param-names)))))
 
   ;; Analyze a property body to determine mode and extract parts.
   ;; Returns (values mode preconditions goal)
@@ -720,7 +880,7 @@
                         (if (message-condition? exn)
                             (condition-message exn)
                             "Z3 translation error"))))
-        (let-values (((smt mode) (generate-smt-problem property combiner)))
+        (let-values (((smt mode val-mode?) (generate-smt-problem property combiner)))
           (let ((z3-result (invoke-z3 smt)))
             (if (eq? mode 'universal)
                 ;; Universal: unsat=pass, sat=fail
@@ -817,7 +977,7 @@
              (double (mobius-eval '(lambda (a) (* 2 a)) env))
              (env2 (name-environment-extend env 'f double))
              (property (mobius-eval '(lambda (x) (assume (= (f x) (* 2 x)))) env2)))
-        (let-values (((smt mode) (generate-smt-problem property double)))
+        (let-values (((smt mode _vm) (generate-smt-problem property double)))
           (assert (string? smt))
           (assert (eq? mode 'universal))
           (assert (string-contains? smt "define-fun"))
@@ -829,7 +989,7 @@
              (double (mobius-eval '(lambda (a) (* 2 a)) env))
              (env2 (name-environment-extend env 'f double))
              (property (mobius-eval '(lambda (x) (> (f x) 10)) env2)))
-        (let-values (((smt mode) (generate-smt-problem property double)))
+        (let-values (((smt mode _vm) (generate-smt-problem property double)))
           (assert (string? smt))
           (assert (eq? mode 'existential))
           (assert (string-contains? smt "check-sat"))
@@ -841,6 +1001,42 @@
       (assert (equal? '(pass . "") (parse-z3-output "unsat\n")))
       (assert (eq? 'fail (car (parse-z3-output "sat\n(model)\n"))))
       (assert (eq? 'error (car (parse-z3-output "unknown\n"))))))
+
+  (define ~check-z3-val-translate
+    (lambda ()
+      ;; Test Val-mode expression translation
+      (parameterize ((*val-mode* #t)
+                     (*extra-define-funs* '())
+                     (*translated-combiners* (make-hashtable symbol-hash symbol=?)))
+        ;; Literals wrap
+        (assert (string=? "(mk-int 42)" (translate-expr 42 '() 'f '())))
+        (assert (string=? "(mk-bool true)" (translate-expr #t '() 'f '())))
+        (assert (string=? "(mk-bool false)" (translate-expr #f '() 'f '())))
+        (assert (string=? "(mk-str \"hi\")" (translate-expr "hi" '() 'f '())))
+        (assert (string=? "mk-nil" (translate-expr '() '() 'f '())))
+        ;; Negative integer
+        (assert (string=? "(mk-int (- 5))" (translate-expr -5 '() 'f '())))
+        ;; Symbol passthrough
+        (assert (string=? "x" (translate-expr 'x '(x) 'f '()))))))
+
+  (define ~check-z3-val-generate
+    (lambda ()
+      ;; Test: combiner uses cons, property uses car — should activate val mode
+      (let* ((env (make-initial-environment))
+             (env (install-base-library env))
+             (wrap (mobius-eval '(lambda (a b) (cons a b)) env))
+             (env2 (name-environment-extend env 'f wrap))
+             (property (mobius-eval
+                        '(lambda (x y) (assume (eq? (car (f x y)) x)))
+                        env2)))
+        (let-values (((smt mode val-mode?) (generate-smt-problem property wrap)))
+          (assert (string? smt))
+          (assert (eq? mode 'universal))
+          (assert val-mode?)
+          (assert (string-contains? smt "declare-datatypes"))
+          (assert (string-contains? smt "mk-pair"))
+          (assert (string-contains? smt "val-car"))
+          (assert (string-contains? smt "Val"))))))
 
   (define string-contains?
     (lambda (haystack needle)
