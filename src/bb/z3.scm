@@ -9,11 +9,13 @@
           ~check-z3-parse-result
           ~check-z3-val-translate
           ~check-z3-val-generate
-          ~check-z3-recursive)
+          ~check-z3-recursive
+          ~check-z3-gamma)
 
   (import (chezscheme)
           (bb values)
           (bb evaluator)
+          (bb reader)
           (bb base-library))
 
   ;; ================================================================
@@ -221,6 +223,24 @@
             (*extra-define-funs*
              (cons (string-append "(define-fun bb_list2str ((lst (Seq Int))) String " body ")")
                    (*extra-define-funs*))))))))
+
+  ;; ================================================================
+  ;; String/utility helpers (needed before translation code)
+  ;; ================================================================
+
+  (define join-strings
+    (lambda (sep strings)
+      (if (null? strings) ""
+          (let loop ((remaining (cdr strings))
+                     (acc (car strings)))
+            (if (null? remaining) acc
+                (loop (cdr remaining)
+                      (string-append acc sep (car remaining))))))))
+
+  ;; Generate a Z3-safe function name to avoid conflicts with Z3 builtins
+  (define z3-fun-name
+    (lambda (sym)
+      (string-append "bb_" (symbol->string sym))))
 
   ;; ================================================================
   ;; Expression translation: Möbius → SMT-LIB2
@@ -494,44 +514,286 @@
          ((pair? expr) (or (check (car expr)) (check (cdr expr))))
          (else #f)))))
 
+  ;; ================================================================
+  ;; Gamma (pattern-matching) support for Z3 translation
+  ;; ================================================================
+
+  ;; Check if a pattern is a gamma pattern (not a simple lambda arg-list).
+  ;; Lambda patterns are flat: ((bind-1) . ((bind-2) . ... nil))
+  ;; Gamma patterns have inner structure: ((pair-pat) . nil), literals, etc.
+  (define pattern-has-guards?
+    (lambda (pattern)
+      ;; Walk the arg-tree spine; check if any element is not a simple bind
+      (let loop ((pat pattern))
+        (cond
+         ((null? pat) #f)  ;; end of arg-tree
+         ((pair? pat)
+          (let ((elem (car pat)))
+            (or (not (and (pair? elem)
+                         (or (eq? 'mobius-bind (car elem))
+                             (eq? 'mobius-wildcard (car elem))
+                             (eq? 'mobius-catamorphic-bind (car elem)))))
+                (loop (cdr pat)))))
+         (else #t)))))
+
+  ;; Generate an SMT guard condition for a pattern against an accessor expr.
+  ;; Returns an SMT string that is "true" when the pattern matches,
+  ;; or #f if the pattern always matches (bind/wildcard).
+  (define translate-pattern-guard
+    (lambda (pattern accessor)
+      (cond
+       ;; Bind — always matches
+       ((and (pair? pattern) (eq? 'mobius-bind (car pattern)))
+        #f)
+       ;; Wildcard — always matches
+       ((and (pair? pattern) (eq? 'mobius-wildcard (car pattern)))
+        #f)
+       ;; Nil — test (_ is mk-nil)
+       ((null? pattern)
+        (string-append "((_ is mk-nil) " accessor ")"))
+       ;; Literal integer
+       ((integer? pattern)
+        (string-append "(= " accessor " (mk-int "
+                       (if (< pattern 0)
+                           (string-append "(- " (number->string (- pattern)) ")")
+                           (number->string pattern))
+                       "))"))
+       ;; Literal boolean
+       ((boolean? pattern)
+        (string-append "(= " accessor " (mk-bool " (if pattern "true" "false") "))"))
+       ;; Literal string
+       ((string? pattern)
+        (string-append "(= " accessor " (mk-str \"" pattern "\"))"))
+       ;; Pair pattern — both car and cdr must match
+       ((pair? pattern)
+        (let ((car-guard (translate-pattern-guard (car pattern)
+                           (string-append "(val-car " accessor ")")))
+              (cdr-guard (translate-pattern-guard (cdr pattern)
+                           (string-append "(val-cdr " accessor ")")))
+              (is-pair (string-append "((_ is mk-pair) " accessor ")")))
+          (let ((guards (filter (lambda (x) x)
+                                (list is-pair car-guard cdr-guard))))
+            (if (= 1 (length guards))
+                (car guards)
+                (string-append "(and " (join-strings " " guards) ")")))))
+       (else
+        (error 'z3-translate "unsupported pattern form" pattern)))))
+
+  ;; Generate SMT let-bindings for a pattern, mapping de Bruijn indices
+  ;; to accessor expressions. Returns alist ((index . smt-accessor) ...).
+  (define translate-pattern-bindings
+    (lambda (pattern accessor)
+      (cond
+       ((and (pair? pattern) (eq? 'mobius-bind (car pattern)))
+        (list (cons (cadr pattern) accessor)))
+       ((and (pair? pattern) (eq? 'mobius-wildcard (car pattern)))
+        '())
+       ((and (pair? pattern) (eq? 'mobius-catamorphic-bind (car pattern)))
+        ;; Catamorphic: the binding value is the result of applying self.
+        ;; We mark it and handle in the body translation.
+        (list (cons (cadr pattern) (cons 'catamorphic accessor))))
+       ((null? pattern) '())
+       ((or (integer? pattern) (boolean? pattern) (string? pattern)) '())
+       ((pair? pattern)
+        (append
+         (translate-pattern-bindings (car pattern)
+           (string-append "(val-car " accessor ")"))
+         (translate-pattern-bindings (cdr pattern)
+           (string-append "(val-cdr " accessor ")"))))
+       (else '()))))
+
+  ;; Collect all parameter names and their SMT accessor expressions
+  ;; from a clause's pattern and name-alist.
+  ;; Returns alist ((param-name . smt-accessor) ...).
+  (define gamma-clause-param-accessors
+    (lambda (pattern name-alist arg-names)
+      ;; For a single-arg combiner, the pattern matches against arg-tree (arg . nil).
+      ;; The Z3 function receives the unwrapped arg directly.
+      ;; So we strip the outer arg-tree wrapper from the pattern.
+      (let* ((n-args (length arg-names))
+             ;; Unwrap arg-tree: pattern is (p1 . (p2 . ... (pN . nil)))
+             ;; Extract inner patterns matched against each arg
+             (inner-patterns
+              (let loop ((pat pattern) (i 0) (acc '()))
+                (if (= i n-args)
+                    (reverse acc)
+                    (loop (cdr pat) (+ i 1) (cons (car pat) acc)))))
+             ;; Get bindings for each inner pattern against its arg name
+             (all-bindings
+              (let loop ((pats inner-patterns) (names arg-names) (acc '()))
+                (if (null? pats) acc
+                    (loop (cdr pats) (cdr names)
+                          (append acc
+                            (translate-pattern-bindings
+                              (car pats) (symbol->string (car names)))))))))
+        ;; Map de Bruijn indices to param names via name-alist
+        (map (lambda (name-entry)
+               (let* ((name (car name-entry))
+                      (index (cdr name-entry))
+                      (binding (assv index all-bindings)))
+                 (if binding
+                     (cons name (cdr binding))
+                     (error 'z3-translate "unbound pattern variable" name))))
+             name-alist))))
+
+  ;; Generate the SMT guard for a gamma clause's pattern,
+  ;; stripping the arg-tree wrapper.
+  (define gamma-clause-guard
+    (lambda (pattern arg-names)
+      (let* ((n-args (length arg-names))
+             (inner-patterns
+              (let loop ((pat pattern) (i 0) (acc '()))
+                (if (= i n-args)
+                    (reverse acc)
+                    (loop (cdr pat) (+ i 1) (cons (car pat) acc))))))
+        ;; Collect guards for each inner pattern
+        (let ((guards
+               (let loop ((pats inner-patterns) (names arg-names) (acc '()))
+                 (if (null? pats) (reverse (filter (lambda (x) x) acc))
+                     (let ((g (translate-pattern-guard
+                               (car pats) (symbol->string (car names)))))
+                       (loop (cdr pats) (cdr names) (cons g acc)))))))
+          (cond
+           ((null? guards) #f)  ;; always matches
+           ((= 1 (length guards)) (car guards))
+           (else (string-append "(and " (join-strings " " guards) ")")))))))
+
+  ;; Translate a gamma clause body with pattern-extracted let-bindings.
+  ;; accessors: alist ((param-name . smt-accessor-or-catamorphic) ...)
+  (define translate-gamma-clause-body
+    (lambda (body accessors combiner-name z3-name env)
+      ;; Build let-bindings: wrap body in (let ((name accessor) ...) body)
+      (let* ((simple-bindings
+              (filter (lambda (entry) (string? (cdr entry))) accessors))
+             (body-smt (translate-expr*
+                        body
+                        (map car accessors)
+                        combiner-name z3-name env)))
+        (if (null? simple-bindings)
+            body-smt
+            (let ((let-pairs
+                   (join-strings " "
+                     (map (lambda (entry)
+                            (string-append "(" (symbol->string (car entry))
+                                           " " (cdr entry) ")"))
+                          simple-bindings))))
+              (string-append "(let (" let-pairs ") " body-smt ")"))))))
+
+  ;; ================================================================
+  ;; define-fun generation
+  ;; ================================================================
+
+  ;; Determine the positional arg-names for a gamma combiner.
+  ;; Gamma patterns match against the argument tree (arg0 . (arg1 . ... nil)).
+  ;; The Z3 function receives these as individual Val parameters.
+  (define gamma-arg-names
+    (lambda (clauses)
+      ;; Count args from first clause's pattern (outer tree spine length)
+      (let* ((first-pattern (car (car clauses)))
+             (n-args (let loop ((pat first-pattern) (n 0))
+                       (if (pair? pat) (loop (cdr pat) (+ n 1)) n))))
+        (let loop ((i 0) (acc '()))
+          (if (= i n-args)
+              (reverse acc)
+              (loop (+ i 1)
+                    (cons (string->symbol
+                            (string-append "arg" (number->string i)))
+                          acc)))))))
+
   ;; Generate a define-fun (or define-fun-rec) for a combiner.
   ;; combiner: the <mobius-combiner> to translate
   ;; fun-name: symbol to use as the function name in Z3
   ;; Returns (values smt-string param-types).
-  ;; Uses define-fun-rec when the body references the combiner's own name.
+  ;; Handles both lambda (single-clause) and gamma (multi-clause) combiners.
   (define generate-define-fun
     (lambda (combiner fun-name)
       (let* ((clauses (mobius-combiner-clauses combiner))
-             (clause (car clauses))
-             (body (cadr clause))
-             (name-alist (caddr clause))
              (env (mobius-combiner-environment combiner))
-             (param-names (map car name-alist))
-             (param-types (infer-param-types body env param-names))
-             ;; Build parameter list for define-fun
-             (param-decls
-              (join-strings " "
-                (map (lambda (entry)
-                       (string-append "(" (symbol->string (car entry))
-                                      " " (cdr entry) ")"))
-                     param-types)))
-             ;; Determine return type from body analysis
-             (return-type (infer-return-type body env param-names))
-             ;; Use the combiner's own name for self-reference detection.
-             ;; If the combiner has a name and the body references it,
-             ;; this enables recursive call translation.
              (self-name (mobius-combiner-name combiner))
              (safe-name (z3-fun-name fun-name))
+             ;; Detect gamma: multiple clauses, or single clause with
+             ;; non-trivial patterns (destructuring, literals, nil guards)
+             (gamma? (or (> (length clauses) 1)
+                         (pattern-has-guards? (car (car clauses)))))
+             (combiner-name (if self-name self-name (gensym))))
+        ;; Gamma requires val mode for pattern matching on structure
+        (when (and gamma? (not (*val-mode*)))
+          (*val-mode* #t))
+        (if gamma?
+            ;; Gamma combiner (multi-clause pattern matching)
+            (generate-define-fun-gamma
+             clauses env self-name safe-name combiner-name fun-name)
+            ;; Lambda combiner (single clause) — original path
+            (let* ((clause (car clauses))
+                   (body (cadr clause))
+                   (name-alist (caddr clause))
+                   (param-names (map car name-alist))
+                   (param-types (infer-param-types body env param-names))
+                   (param-decls
+                    (join-strings " "
+                      (map (lambda (entry)
+                             (string-append "(" (symbol->string (car entry))
+                                            " " (cdr entry) ")"))
+                           param-types)))
+                   (return-type (infer-return-type body env param-names))
+                   (recursive? (and self-name
+                                    (body-references-symbol? body self-name)))
+                   (body-smt (translate-expr* body param-names
+                                              combiner-name safe-name env))
+                   (keyword (if recursive? "define-fun-rec" "define-fun")))
+              (values
+               (string-append "(" keyword " " safe-name
+                              " (" param-decls ") " return-type " " body-smt ")")
+               param-types))))))
+
+  ;; Generate define-fun for a multi-clause gamma combiner.
+  ;; All params are Val, return type is Val.
+  (define generate-define-fun-gamma
+    (lambda (clauses env self-name safe-name combiner-name fun-name)
+      (let* ((arg-names (gamma-arg-names clauses))
+             (param-types (map (lambda (n) (cons n "Val")) arg-names))
+             (param-decls
+              (join-strings " "
+                (map (lambda (n) (string-append "(" (symbol->string n) " Val)"))
+                     arg-names)))
+             (return-type "Val")
              (recursive? (and self-name
-                              (body-references-symbol? body self-name)))
-             (combiner-name (if self-name self-name (gensym)))
-             (body-smt (translate-expr* body param-names
-                                        combiner-name safe-name env))
+                              (let loop ((cls clauses))
+                                (if (null? cls) #f
+                                    (or (body-references-symbol? (cadr (car cls)) self-name)
+                                        (loop (cdr cls)))))))
+             ;; Build nested ite chain from clauses
+             (body-smt (translate-gamma-clauses
+                        clauses arg-names combiner-name safe-name env))
              (keyword (if recursive? "define-fun-rec" "define-fun")))
         (values
          (string-append "(" keyword " " safe-name
                         " (" param-decls ") " return-type " " body-smt ")")
          param-types))))
+
+  ;; Translate gamma clauses to nested ite chain.
+  (define translate-gamma-clauses
+    (lambda (clauses arg-names combiner-name z3-name env)
+      (if (null? clauses)
+          ;; No more clauses — unreachable (error value)
+          "mk-nil"
+          (let* ((clause (car clauses))
+                 (pattern (car clause))
+                 (body (cadr clause))
+                 (name-alist (caddr clause))
+                 (guard (gamma-clause-guard pattern arg-names))
+                 (accessors (if (null? name-alist) '()
+                                (gamma-clause-param-accessors
+                                 pattern name-alist arg-names)))
+                 (body-smt (translate-gamma-clause-body
+                            body accessors combiner-name z3-name env)))
+            (if guard
+                ;; Guarded clause — ite with rest
+                (let ((rest (translate-gamma-clauses
+                             (cdr clauses) arg-names combiner-name z3-name env)))
+                  (string-append "(ite " guard " " body-smt " " rest ")"))
+                ;; Unguarded (wildcard/bind) — always matches, last clause
+                body-smt)))))
 
   ;; Infer the return type of an expression.
   ;; For now: if the outermost operation is comparison/boolean → Bool,
@@ -689,11 +951,6 @@
          ((eq? (cdar remaining) combiner)
           (caar remaining))
          (else (loop (cdr remaining)))))))
-
-  ;; Generate a Z3-safe function name to avoid conflicts with Z3 builtins
-  (define z3-fun-name
-    (lambda (sym)
-      (string-append "bb_" (symbol->string sym))))
 
   ;; Infer property variable types from how they're used in calls to
   ;; the combiner-under-test. E.g., (f x) where f takes (a:Int) → x:Int
@@ -918,17 +1175,8 @@
                   (else z3-result))))))))
 
   ;; ================================================================
-  ;; String helpers
+  ;; String helpers (continued)
   ;; ================================================================
-
-  (define join-strings
-    (lambda (sep strings)
-      (if (null? strings) ""
-          (let loop ((remaining (cdr strings))
-                     (acc (car strings)))
-            (if (null? remaining) acc
-                (loop (cdr remaining)
-                      (string-append acc sep (car remaining))))))))
 
   (define string-prefix?
     (lambda (prefix str)
@@ -1086,6 +1334,34 @@
         (let-values (((smt mode _vm) (generate-smt-problem prop double)))
           (assert (not (string-contains? smt "define-fun-rec")))
           (assert (string-contains? smt "define-fun bb_f"))))))
+
+  (define ~check-z3-gamma
+    (lambda ()
+      ;; Multi-clause gamma: (gamma ((#nil) #true) ((,_) #false))
+      (let* ((env (make-initial-environment))
+             (env (install-base-library env))
+             (empty? (mobius-eval
+                       (mobius-read-string "(gamma ((#nil) #true) ((,_) #false))")
+                       env))
+             (env2 (name-environment-extend env 'f empty?))
+             (prop (mobius-eval '(lambda (a b) (assume (eq? (f (cons a b)) #f))) env2)))
+        (let-values (((smt mode val-mode?) (generate-smt-problem prop empty?)))
+          (assert (string? smt))
+          (assert val-mode?)
+          (assert (string-contains? smt "ite"))
+          (assert (string-contains? smt "mk-nil"))))
+      ;; Single-clause gamma with destructuring
+      (let* ((env (make-initial-environment))
+             (env (install-base-library env))
+             (get-key (mobius-eval
+                        (mobius-read-string "(gamma (((,k . ,_)) k))")
+                        env))
+             (env2 (name-environment-extend env 'f get-key))
+             (prop (mobius-eval '(lambda (k v) (assume (eq? (f (cons k v)) k))) env2)))
+        (let-values (((smt mode val-mode?) (generate-smt-problem prop get-key)))
+          (assert (string? smt))
+          (assert val-mode?)
+          (assert (string-contains? smt "val-car"))))))
 
   (define string-contains?
     (lambda (haystack needle)
