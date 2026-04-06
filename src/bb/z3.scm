@@ -2,6 +2,7 @@
 
   (export z3-available?
           z3-verify-property
+          generate-smt-problem
           ~check-z3-translate
           ~check-z3-generate
           ~check-z3-parse-result)
@@ -80,6 +81,10 @@
   ;; - combiner-name: symbol that refers to the combiner-under-test
   ;; - env: closure environment for resolving other symbols
   ;; Returns a string of SMT-LIB2 or raises an error.
+
+  ;; Extra define-funs collected during translation (mutable, per-problem)
+  (define *extra-define-funs* (make-parameter '()))
+  (define *translated-combiners* (make-parameter (make-hashtable symbol-hash symbol=?)))
 
   (define translate-expr
     (lambda (expr param-names combiner-name env)
@@ -187,7 +192,8 @@
                   (string-append "unsupported primitive "
                                  (number->string index))))))))
 
-  ;; Translate known base-library combiners (like `not`)
+  ;; Translate a user combiner call. For known base-library combiners (not),
+  ;; emit directly. For others, generate a define-fun and emit a call.
   (define translate-known-combiner
     (lambda (name combiner args param-names combiner-name z3-name env)
       (let ((name-str (symbol->string name)))
@@ -197,7 +203,21 @@
                          (translate-expr* (car args) param-names combiner-name z3-name env)
                          ")"))
          (else
-          (error 'z3-translate "unsupported combiner" name))))))
+          ;; Generate a define-fun for this combiner if not already done
+          (let ((safe-name (z3-fun-name name)))
+            (unless (hashtable-ref (*translated-combiners*) name #f)
+              (hashtable-set! (*translated-combiners*) name #t)
+              (let-values (((def-str _types)
+                            (generate-define-fun combiner name)))
+                (*extra-define-funs*
+                 (cons def-str (*extra-define-funs*)))))
+            ;; Emit call
+            (string-append "(" safe-name " "
+                           (join-strings " "
+                             (map (lambda (a)
+                                    (translate-expr* a param-names combiner-name z3-name env))
+                                  args))
+                           ")")))))))
 
   ;; ================================================================
   ;; SMT-LIB2 generation
@@ -242,19 +262,28 @@
   (define infer-return-type
     (lambda (body env param-names)
       (cond
+       ((boolean? body) "Bool")
+       ((integer? body) "Int")
        ((pair? body)
         (let ((head (car body)))
-          (if (symbol? head)
-              (let ((val (guard (exn (#t #f))
-                          (name-environment-ref env head))))
-                (if (and val (mobius-primitive? val))
-                    (let ((index (mobius-primitive-index val)))
-                      (if (memv index '(35 36 37 30)) ;; < > = eq?
-                          "Bool"
-                          "Int"))
-                    "Int"))
-              "Int")))
-       ((boolean? body) "Bool")
+          (cond
+           ;; (if test then else) → infer from then branch
+           ((eq? head 'if)
+            (infer-return-type (caddr body) env param-names))
+           ;; (begin ... last) → infer from last
+           ((eq? head 'begin)
+            (infer-return-type (car (reverse (cdr body))) env param-names))
+           ((symbol? head)
+            (let ((val (guard (exn (#t #f))
+                        (name-environment-ref env head))))
+              (if (and val (mobius-primitive? val))
+                  (let ((index (mobius-primitive-index val)))
+                    (cond
+                     ((memv index '(35 36 37 30)) "Bool")  ;; < > = eq?
+                     ((memv index '(31 32 33 34)) "Int")   ;; + - * /
+                     (else "Int")))
+                  "Int")))
+           (else "Int"))))
        (else "Int"))))
 
   ;; Generate the full SMT-LIB2 problem.
@@ -263,69 +292,77 @@
   ;; Returns (values smt-string combiner-fun-name) or raises error.
   (define generate-smt-problem
     (lambda (property combiner)
-      (let* ((prop-clauses (mobius-combiner-clauses property))
-             (prop-clause (car prop-clauses))
-             (prop-body (cadr prop-clause))
-             (prop-name-alist (caddr prop-clause))
-             (prop-env (mobius-combiner-environment property))
-             (prop-param-names (map car prop-name-alist))
-             ;; Find which symbol in the property's closure is the combiner-under-test
-             (combiner-name (find-combiner-name prop-env combiner))
-             ;; Generate define-fun for combiner-under-test
-             )
-        (let-values (((define-fun-str combiner-param-types)
-                      (generate-define-fun combiner combiner-name)))
-          ;; Determine property variable types from combiner parameter types
-          ;; by matching call sites: (f x y) maps x→param1-type, y→param2-type
-          (let* ((prop-var-types
-                  (infer-property-var-types prop-body prop-param-names
-                                           combiner-name combiner-param-types
-                                           prop-env))
-                 ;; Generate variable declarations
-                 (var-decls
-                  (join-strings "\n"
-                    (map (lambda (entry)
-                           (string-append "(declare-const "
-                                          (symbol->string (car entry))
-                                          " " (cdr entry) ")"))
-                         prop-var-types)))
-                 )
-            ;; Analyze body: universal vs existential
-            (let-values (((mode preconditions goal)
-                          (analyze-property-body prop-body)))
-              (let* ((precond-strs
-                      (map (lambda (a)
-                             (string-append "(assert "
-                                            (translate-expr a prop-param-names
-                                                            combiner-name prop-env)
-                                            ")"))
-                           preconditions))
-                     (goal-smt (translate-expr goal prop-param-names
-                                              combiner-name prop-env))
-                     (goal-str
-                      (if (eq? mode 'universal)
-                          ;; Negate for validity: unsat = holds for all
-                          (string-append "(assert (not " goal-smt "))")
-                          ;; Assert directly: sat = witness exists
-                          (string-append "(assert " goal-smt ")")))
-                     (comment
-                      (if (eq? mode 'universal)
-                          "; Negated property (unsat = holds for all)"
-                          "; Existential property (sat = witness exists)"))
-                     (smt (string-append
-                           "; Combiner-under-test\n"
-                           define-fun-str "\n\n"
-                           "; Property variables\n"
-                           var-decls "\n\n"
-                           (if (null? precond-strs) ""
-                               (string-append
-                                "; Preconditions\n"
-                                (join-strings "\n" precond-strs) "\n\n"))
-                           comment "\n"
-                           goal-str "\n\n"
-                           "(check-sat)\n"
-                           "(get-model)\n")))
-                (values smt mode))))))))
+      (parameterize ((*extra-define-funs* '())
+                     (*translated-combiners* (make-hashtable symbol-hash symbol=?)))
+        (let* ((prop-clauses (mobius-combiner-clauses property))
+               (prop-clause (car prop-clauses))
+               (prop-body (cadr prop-clause))
+               (prop-name-alist (caddr prop-clause))
+               (prop-env (mobius-combiner-environment property))
+               (prop-param-names (map car prop-name-alist))
+               ;; Find which symbol in the property's closure is the combiner-under-test
+               (combiner-name (find-combiner-name prop-env combiner))
+               ;; Generate define-fun for combiner-under-test
+               )
+          (let-values (((define-fun-str combiner-param-types)
+                        (generate-define-fun combiner combiner-name)))
+            ;; Determine property variable types from combiner parameter types
+            ;; by matching call sites: (f x y) maps x→param1-type, y→param2-type
+            (let* ((prop-var-types
+                    (infer-property-var-types prop-body prop-param-names
+                                             combiner-name combiner-param-types
+                                             prop-env))
+                   ;; Generate variable declarations
+                   (var-decls
+                    (join-strings "\n"
+                      (map (lambda (entry)
+                             (string-append "(declare-const "
+                                            (symbol->string (car entry))
+                                            " " (cdr entry) ")"))
+                           prop-var-types)))
+                   )
+              ;; Analyze body: universal vs existential
+              (let-values (((mode preconditions goal)
+                            (analyze-property-body prop-body)))
+                (let* ((precond-strs
+                        (map (lambda (a)
+                               (string-append "(assert "
+                                              (translate-expr a prop-param-names
+                                                              combiner-name prop-env)
+                                              ")"))
+                             preconditions))
+                       (goal-smt (translate-expr goal prop-param-names
+                                                combiner-name prop-env))
+                       (goal-str
+                        (if (eq? mode 'universal)
+                            ;; Negate for validity: unsat = holds for all
+                            (string-append "(assert (not " goal-smt "))")
+                            ;; Assert directly: sat = witness exists
+                            (string-append "(assert " goal-smt ")")))
+                       (comment
+                        (if (eq? mode 'universal)
+                            "; Negated property (unsat = holds for all)"
+                            "; Existential property (sat = witness exists)"))
+                       ;; Collect extra define-funs generated during translation
+                       (extras (reverse (*extra-define-funs*)))
+                       (smt (string-append
+                             (if (null? extras) ""
+                                 (string-append
+                                  "; Helper functions\n"
+                                  (join-strings "\n" extras) "\n\n"))
+                             "; Combiner-under-test\n"
+                             define-fun-str "\n\n"
+                             "; Property variables\n"
+                             var-decls "\n\n"
+                             (if (null? precond-strs) ""
+                                 (string-append
+                                  "; Preconditions\n"
+                                  (join-strings "\n" precond-strs) "\n\n"))
+                             comment "\n"
+                             goal-str "\n\n"
+                             "(check-sat)\n"
+                             "(get-model)\n")))
+                  (values smt mode)))))))))
 
   ;; Find which symbol in the environment refers to the combiner-under-test.
   ;; Walks the environment alist looking for an eq? match.
@@ -500,9 +537,10 @@
                         (let ((tokens (string-split-spaces segment)))
                           (if (and (>= (length tokens) 4)
                                    (string=? (cadr tokens) "()"))
-                              ;; Constant: name () Type value
+                              ;; Constant: name () Type value...
+                              ;; Value may be multi-token like (- 1)
                               (let* ((name (car tokens))
-                                     (value (cadddr tokens)))
+                                     (value (join-strings " " (cdddr tokens))))
                                 (loop (+ (or close i) 1)
                                       (cons (string-append name " = " value)
                                             acc)))
