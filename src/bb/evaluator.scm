@@ -414,6 +414,12 @@
                  (error 'assume
                         (if (string? message) message "assertion failed")
                         test))))
+          ;; 40: string-length
+          ((40)
+           (let ((value (car arguments)))
+             (if (string? value)
+                 (string-length value)
+                 (error 'string-length "not a string" value))))
           (else
            (error 'apply-primitive "unknown primitive index" index))))))
 
@@ -750,13 +756,14 @@
        "combiner?" "continuation?"
        "eq?" "+" "-" "*" "/" "<" ">" "="
        "display"
-       "assume"))
+       "assume"
+       "string-length"))
 
   (define make-initial-environment
     (lambda ()
       (let loop ((index 2) ;; 0=gamma, 1=lambda are special forms; start at 2=xeno
                  (environment (name-environment-empty)))
-        (if (> index 39)
+        (if (> index 40)
             ;; Add well-known bindings
             (let* ((environment (name-environment-extend environment (string->symbol "#true") #t))
                    (environment (name-environment-extend environment (string->symbol "#false") #f))

@@ -3,6 +3,7 @@
   (export z3-available?
           z3-verify-property
           generate-smt-problem
+          *z3-max-string-length*
           ~check-z3-translate
           ~check-z3-generate
           ~check-z3-parse-result)
@@ -38,6 +39,13 @@
   ;; 31:+ 32:- 33:* 34:/ 35:< 36:> 37:=
   (define numeric-primitive-indices '(31 32 33 34 35 36 37))
 
+  ;; Primitive indices that imply String parameters
+  ;; 21:string->list 25:string?
+  (define string-primitive-indices '(21 25))
+
+  ;; Maximum string length for bounded Z3 string proofs
+  (define *z3-max-string-length* (make-parameter 7))
+
   ;; Walk a body expression to infer parameter types.
   ;; env is the closure environment (to resolve symbols to primitives).
   ;; param-names is a list of symbols that are parameters.
@@ -52,25 +60,123 @@
           (cond
            ((pair? expr)
             (let ((head (car expr)))
-              ;; Check if head is a symbol that resolves to a numeric primitive
               (when (symbol? head)
                 (let ((val (guard (exn (#t #f))
                              (name-environment-ref env head))))
-                  (when (and val (mobius-primitive? val)
-                             (memv (mobius-primitive-index val)
-                                   numeric-primitive-indices))
-                    ;; Mark all parameter symbols in arguments as Int
-                    (for-each
-                     (lambda (arg)
-                       (when (and (symbol? arg) (memq arg param-names))
-                         (hashtable-set! types arg "Int")))
-                     (cdr expr)))))
+                  (when (and val (mobius-primitive? val))
+                    (let ((index (mobius-primitive-index val)))
+                      ;; Numeric primitives → Int
+                      (when (memv index numeric-primitive-indices)
+                        (for-each
+                         (lambda (arg)
+                           (when (and (symbol? arg) (memq arg param-names))
+                             (hashtable-set! types arg "Int")))
+                         (cdr expr)))
+                      ;; String primitives → String
+                      (when (memv index string-primitive-indices)
+                        (for-each
+                         (lambda (arg)
+                           (when (and (symbol? arg) (memq arg param-names))
+                             (hashtable-set! types arg "String")))
+                         (cdr expr)))))))
               ;; Recurse into all sub-expressions
               (for-each walk expr)))
            (else (void))))
         ;; Convert hashtable to alist
         (map (lambda (p) (cons p (hashtable-ref types p "Int")))
              param-names))))
+
+  ;; ================================================================
+  ;; String/list helpers for Z3
+  ;; ================================================================
+
+  ;; Flag: have string helpers been emitted for this problem?
+  (define *string-helpers-emitted* (make-parameter #f))
+
+  ;; The string bound for the current problem, derived from check preconditions
+  (define *z3-string-bound* (make-parameter 7))
+
+  ;; Extract string length bound from preconditions.
+  ;; Looks for patterns like (< (string-length s) N) in the assume list.
+  ;; Returns the bound N, or the default from *z3-max-string-length*.
+  (define extract-string-bound
+    (lambda (preconditions env)
+      (let loop ((remaining preconditions))
+        (if (null? remaining)
+            (*z3-max-string-length*)
+            (let ((expr (car remaining)))
+              ;; Match (< (string-length VAR) N) or (> N (string-length VAR))
+              (if (and (pair? expr) (= 3 (length expr)))
+                  (let ((head (car expr))
+                        (arg1 (cadr expr))
+                        (arg2 (caddr expr)))
+                    (let ((val (guard (exn (#t #f))
+                                (name-environment-ref env head))))
+                      (if (and val (mobius-primitive? val)
+                               (= 35 (mobius-primitive-index val))  ;; <
+                               (pair? arg1)
+                               (= 2 (length arg1)))
+                          ;; (< (string-length s) N)
+                          (let ((inner-head (car arg1))
+                                (inner-val (guard (exn (#t #f))
+                                             (name-environment-ref env (car arg1)))))
+                            (if (and inner-val (mobius-primitive? inner-val)
+                                     (= 40 (mobius-primitive-index inner-val))  ;; string-length
+                                     (integer? arg2))
+                                arg2
+                                (loop (cdr remaining))))
+                          (loop (cdr remaining)))))
+                  (loop (cdr remaining))))))))
+
+  ;; Emit bounded string<->list Z3 helpers into *extra-define-funs*.
+  ;; Uses a chain of let-bindings to build up linearly (not exponentially).
+  ;; Z3 String theory: str.at, str.len, str.to_code, str.from_code, str.++
+  ;; We model Möbius lists as (Seq Int) — sequence of char codes.
+  (define ensure-string-helpers!
+    (lambda ()
+      (unless (*string-helpers-emitted*)
+        (*string-helpers-emitted* #t)
+        (let ((n (*z3-string-bound*)))
+          ;; bb_str2list: String → (Seq Int)
+          ;; Nested let chain (sequential): each step appends one char if in bounds
+          (let* ((body
+                  (let loop ((i (- n 1))
+                             (inner (string-append "a" (number->string (- n 1)))))
+                    (if (< i 0) inner
+                        (let* ((var (string-append "a" (number->string i)))
+                               (prev (if (= i 0) "(as seq.empty (Seq Int))"
+                                         (string-append "a" (number->string (- i 1)))))
+                               (binding
+                                (string-append
+                                 "(let ((" var " (ite (> (str.len s) " (number->string i) ") "
+                                 "(seq.++ " prev " (seq.unit (str.to_code (str.at s " (number->string i) "))))"
+                                 " " prev "))) ")))
+                          (if (= i (- n 1))
+                              (loop (- i 1) (string-append binding var ")"))
+                              (loop (- i 1) (string-append binding inner ")"))))))))
+            (*extra-define-funs*
+             (cons (string-append "(define-fun bb_str2list ((s String)) (Seq Int) " body ")")
+                   (*extra-define-funs*))))
+          ;; bb_list2str: (Seq Int) → String
+          ;; Same nested let chain
+          (let* ((body
+                  (let loop ((i (- n 1))
+                             (inner (string-append "b" (number->string (- n 1)))))
+                    (if (< i 0) inner
+                        (let* ((var (string-append "b" (number->string i)))
+                               (prev (if (= i 0) "\"\""
+                                         (string-append "b" (number->string (- i 1)))))
+                               (binding
+                                (string-append
+                                 "(let ((" var " (ite (> (seq.len lst) " (number->string i) ") "
+                                 "(str.++ " prev " (str.from_code (seq.nth lst " (number->string i) ")))"
+                                 " " prev "))) ")))
+                          (if (= i (- n 1))
+                              (loop (- i 1) (string-append binding var ")"))
+                              (loop (- i 1) (string-append binding inner ")"))))))))
+            (*extra-define-funs*
+             (cons (string-append "(define-fun bb_list2str ((lst (Seq Int))) String " body ")")
+                   (*extra-define-funs*))))))))
 
   ;; ================================================================
   ;; Expression translation: Möbius → SMT-LIB2
@@ -102,6 +208,9 @@
        ;; Boolean
        ((eq? expr #t) "true")
        ((eq? expr #f) "false")
+       ;; String literal
+       ((string? expr)
+        (string-append "\"" expr "\""))
        ;; Symbol — parameter, combiner-under-test, or environment lookup
        ((symbol? expr)
         (cond
@@ -115,6 +224,7 @@
              ((not val)
               (error 'z3-translate "unresolved symbol" expr))
              ((integer? val) (number->string val))
+             ((string? val) (string-append "\"" val "\""))
              ((eq? val #t) "true")
              ((eq? val #f) "false")
              ;; Primitive — shouldn't appear bare
@@ -183,10 +293,26 @@
           ((37) (string-append "(= " (join-strings " " translated-args) ")"))
           ;; 30: eq?
           ((30) (string-append "(= " (join-strings " " translated-args) ")"))
+          ;; 18: char->integer
+          ((18) (string-append "(str.to_code " (car translated-args) ")"))
+          ;; 19: integer->char
+          ((19) (string-append "(str.from_code " (car translated-args) ")"))
+          ;; 20: list->string — via bounded helper
+          ((20)
+           (ensure-string-helpers!)
+           (string-append "(bb_list2str " (car translated-args) ")"))
+          ;; 21: string->list — via bounded helper
+          ((21)
+           (ensure-string-helpers!)
+           (string-append "(bb_str2list " (car translated-args) ")"))
           ;; 22: integer? — type check, translate as true for Int vars
           ((22) "true")
           ;; 23: float? — type check
           ((23) "true")
+          ;; 25: string? — type check, translate as true for String vars
+          ((25) "true")
+          ;; 40: string-length
+          ((40) (string-append "(str.len " (car translated-args) ")"))
           (else
            (error 'z3-translate
                   (string-append "unsupported primitive "
@@ -280,7 +406,10 @@
                   (let ((index (mobius-primitive-index val)))
                     (cond
                      ((memv index '(35 36 37 30)) "Bool")  ;; < > = eq?
-                     ((memv index '(31 32 33 34)) "Int")   ;; + - * /
+                     ((memv index '(31 32 33 34 18)) "Int")   ;; + - * / char->integer
+                     ((memv index '(20)) "String")  ;; list->string
+                     ((memv index '(21)) "(Seq Int)")  ;; string->list
+                     ((memv index '(19)) "String")  ;; integer->char
                      (else "Int")))
                   "Int")))
            (else "Int"))))
@@ -293,7 +422,8 @@
   (define generate-smt-problem
     (lambda (property combiner)
       (parameterize ((*extra-define-funs* '())
-                     (*translated-combiners* (make-hashtable symbol-hash symbol=?)))
+                     (*translated-combiners* (make-hashtable symbol-hash symbol=?))
+                     (*string-helpers-emitted* #f))
         (let* ((prop-clauses (mobius-combiner-clauses property))
                (prop-clause (car prop-clauses))
                (prop-body (cadr prop-clause))
@@ -302,12 +432,18 @@
                (prop-param-names (map car prop-name-alist))
                ;; Find which symbol in the property's closure is the combiner-under-test
                (combiner-name (find-combiner-name prop-env combiner))
-               ;; Generate define-fun for combiner-under-test
+               ;; Check if property body actually references the combiner
+               (body-references-combiner?
+                (let check ((expr prop-body))
+                  (cond
+                   ((symbol? expr) (eq? expr combiner-name))
+                   ((pair? expr) (or (check (car expr)) (check (cdr expr))))
+                   (else #f))))
                )
           (let-values (((define-fun-str combiner-param-types)
-                        (generate-define-fun combiner combiner-name)))
-            ;; Determine property variable types from combiner parameter types
-            ;; by matching call sites: (f x y) maps x→param1-type, y→param2-type
+                        (if body-references-combiner?
+                            (generate-define-fun combiner combiner-name)
+                            (values "" '()))))
             (let* ((prop-var-types
                     (infer-property-var-types prop-body prop-param-names
                                              combiner-name combiner-param-types
@@ -324,6 +460,8 @@
               ;; Analyze body: universal vs existential
               (let-values (((mode preconditions goal)
                             (analyze-property-body prop-body)))
+                ;; Extract string bound from preconditions before translation
+                (*z3-string-bound* (extract-string-bound preconditions prop-env))
                 (let* ((precond-strs
                         (map (lambda (a)
                                (string-append "(assert "
@@ -350,8 +488,9 @@
                                  (string-append
                                   "; Helper functions\n"
                                   (join-strings "\n" extras) "\n\n"))
-                             "; Combiner-under-test\n"
-                             define-fun-str "\n\n"
+                             (if (string=? define-fun-str "") ""
+                                 (string-append "; Combiner-under-test\n"
+                                                define-fun-str "\n\n"))
                              "; Property variables\n"
                              var-decls "\n\n"
                              (if (null? precond-strs) ""
@@ -386,15 +525,17 @@
   ;; the combiner-under-test. E.g., (f x) where f takes (a:Int) → x:Int
   (define infer-property-var-types
     (lambda (body prop-param-names combiner-name combiner-param-types env)
-      (let ((types (make-hashtable symbol-hash symbol=?)))
-        ;; Default all to Int
-        (for-each (lambda (p) (hashtable-set! types p "Int")) prop-param-names)
-        ;; Walk body looking for (combiner-name arg1 arg2 ...)
+      ;; First pass: infer directly from property body (string/numeric primitives)
+      (let* ((body-types (infer-param-types body env prop-param-names))
+             (types (make-hashtable symbol-hash symbol=?)))
+        ;; Seed with body-inferred types
+        (for-each (lambda (entry) (hashtable-set! types (car entry) (cdr entry)))
+                  body-types)
+        ;; Second pass: override from combiner call sites (f x y) → param types
         (let walk ((expr body))
           (when (pair? expr)
             (when (and (symbol? (car expr))
                        (eq? (car expr) combiner-name))
-              ;; Map each arg to combiner's param type
               (let arg-loop ((args (cdr expr))
                              (ctypes combiner-param-types))
                 (when (and (pair? args) (pair? ctypes))
