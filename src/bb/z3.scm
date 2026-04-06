@@ -8,7 +8,8 @@
           ~check-z3-generate
           ~check-z3-parse-result
           ~check-z3-val-translate
-          ~check-z3-val-generate)
+          ~check-z3-val-generate
+          ~check-z3-recursive)
 
   (import (chezscheme)
           (bb values)
@@ -484,10 +485,20 @@
   ;; SMT-LIB2 generation
   ;; ================================================================
 
-  ;; Generate a define-fun for the combiner-under-test.
+  ;; Check if an expression references a given symbol.
+  (define body-references-symbol?
+    (lambda (body name)
+      (let check ((expr body))
+        (cond
+         ((symbol? expr) (eq? expr name))
+         ((pair? expr) (or (check (car expr)) (check (cdr expr))))
+         (else #f)))))
+
+  ;; Generate a define-fun (or define-fun-rec) for a combiner.
   ;; combiner: the <mobius-combiner> to translate
   ;; fun-name: symbol to use as the function name in Z3
-  ;; Returns SMT-LIB2 string.
+  ;; Returns (values smt-string param-types).
+  ;; Uses define-fun-rec when the body references the combiner's own name.
   (define generate-define-fun
     (lambda (combiner fun-name)
       (let* ((clauses (mobius-combiner-clauses combiner))
@@ -506,14 +517,19 @@
                      param-types)))
              ;; Determine return type from body analysis
              (return-type (infer-return-type body env param-names))
-             ;; Translate the body (fun-name not used as combiner-name here,
-             ;; since the combiner's own body doesn't call itself by name
-             ;; for non-recursive combiners. Use a dummy combiner-name.)
+             ;; Use the combiner's own name for self-reference detection.
+             ;; If the combiner has a name and the body references it,
+             ;; this enables recursive call translation.
+             (self-name (mobius-combiner-name combiner))
+             (safe-name (z3-fun-name fun-name))
+             (recursive? (and self-name
+                              (body-references-symbol? body self-name)))
+             (combiner-name (if self-name self-name (gensym)))
              (body-smt (translate-expr* body param-names
-                                        (gensym) "" env))
-             (safe-name (z3-fun-name fun-name)))
+                                        combiner-name safe-name env))
+             (keyword (if recursive? "define-fun-rec" "define-fun")))
         (values
-         (string-append "(define-fun " safe-name
+         (string-append "(" keyword " " safe-name
                         " (" param-decls ") " return-type " " body-smt ")")
          param-types))))
 
@@ -1037,6 +1053,39 @@
           (assert (string-contains? smt "mk-pair"))
           (assert (string-contains? smt "val-car"))
           (assert (string-contains? smt "Val"))))))
+
+  (define ~check-z3-recursive
+    (lambda ()
+      ;; Test: recursive combiner generates define-fun-rec
+      (let* ((env (make-initial-environment))
+             (env (install-base-library env))
+             (fact (mobius-eval
+                     '(begin
+                        (define factorial
+                          (lambda (n)
+                            (if (= n 0) 1 (* n (factorial (- n 1))))))
+                        factorial)
+                     env))
+             (env2 (name-environment-extend env 'f fact))
+             (prop (mobius-eval
+                     '(lambda (x) (begin (assume (= x 5)) (assume (= (f x) 120))))
+                     env2)))
+        (let-values (((smt mode _vm) (generate-smt-problem prop fact)))
+          (assert (string? smt))
+          (assert (eq? mode 'universal))
+          (assert (string-contains? smt "define-fun-rec"))
+          (assert (string-contains? smt "bb_f"))
+          ;; Body should contain recursive self-call
+          (assert (string-contains? smt "(bb_f (- n 1))"))))
+      ;; Non-recursive combiner should NOT use define-fun-rec
+      (let* ((env (make-initial-environment))
+             (env (install-base-library env))
+             (double (mobius-eval '(lambda (a) (* 2 a)) env))
+             (env2 (name-environment-extend env 'f double))
+             (prop (mobius-eval '(lambda (x) (assume (= (f x) (* 2 x)))) env2)))
+        (let-values (((smt mode _vm) (generate-smt-problem prop double)))
+          (assert (not (string-contains? smt "define-fun-rec")))
+          (assert (string-contains? smt "define-fun bb_f"))))))
 
   (define string-contains?
     (lambda (haystack needle)
