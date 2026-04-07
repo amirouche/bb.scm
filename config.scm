@@ -1,6 +1,6 @@
 ((author
-   ((email . "reviewer@acm-rep.example")
-    (languages . ("en fr"))
-    (name . "Rev Iewer")
-    (website . "https://acm-rep.example")))
+   ((email . "hello@amirouche.dev")
+    (languages . ("en"))
+    (name . "Amirouche A. BOUBEKKI")
+    (website . "https://amirouche.dev")))
  (remotes . ()))
