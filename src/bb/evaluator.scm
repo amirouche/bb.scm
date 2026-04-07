@@ -426,6 +426,18 @@
            (write arguments (current-error-port))
            (newline (current-error-port))
            (car (reverse arguments)))
+          ;; 42: bit-length (number of bits to represent integer)
+          ((42)
+           (let ((value (car arguments)))
+             (if (integer? value)
+                 (fxlength value)
+                 (error 'bit-length "not an integer" value))))
+          ;; 43: arithmetic-shift-right
+          ((43)
+           (fxarithmetic-shift-right (car arguments) (cadr arguments)))
+          ;; 44: arithmetic-shift-left
+          ((44)
+           (fxarithmetic-shift-left (car arguments) (cadr arguments)))
           (else
            (error 'apply-primitive "unknown primitive index" index))))))
 
@@ -764,13 +776,16 @@
        "display"
        "assume"
        "string-length"
-       "pk"))
+       "pk"
+       "bit-length"
+       "arithmetic-shift-right"
+       "arithmetic-shift-left"))
 
   (define make-initial-environment
     (lambda ()
       (let loop ((index 2) ;; 0=gamma, 1=lambda are special forms; start at 2=xeno
                  (environment (name-environment-empty)))
-        (if (> index 41)
+        (if (> index 44)
             ;; Add well-known bindings
             (let* ((environment (name-environment-extend environment (string->symbol "#true") #t))
                    (environment (name-environment-extend environment (string->symbol "#false") #f))
