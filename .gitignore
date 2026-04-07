@@ -5,4 +5,3 @@
 *.scm~
 *.scm#*
 .#*.scm
-combiners/
