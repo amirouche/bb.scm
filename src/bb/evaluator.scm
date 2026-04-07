@@ -414,30 +414,144 @@
                  (error 'assume
                         (if (string? message) message "assertion failed")
                         test))))
-          ;; 40: string-length
+          ;; 40: number->list — convert number to list of booleans
+          ;; (number->list value)                       — unsigned, big-endian
+          ;; (number->list value "unsigned")            — non-negative integer, MSB first
+          ;; (number->list value "signed")              — sign-magnitude: sign bit + magnitude
+          ;; (number->list value "float64")             — IEEE 754 double, 64 booleans
+          ;; (number->list value "unsigned" "little")   — LSB first
+          ;; Endianness: "big" (default) or "little"
           ((40)
-           (let ((value (car arguments)))
-             (if (string? value)
-                 (string-length value)
-                 (error 'string-length "not a string" value))))
+           (letrec
+             ((reverse-mobius
+               (lambda (lst)
+                 (let loop ((cur lst) (acc mobius-nil))
+                   (if (mobius-nil? cur) acc
+                       (loop (cdr cur) (cons (car cur) acc))))))
+              (integer->bits-be ;; big-endian unsigned bits
+               (lambda (n)
+                 (if (zero? n) mobius-nil
+                     (let loop ((n n) (acc mobius-nil))
+                       (if (zero? n) acc
+                           (loop (ash n -1)
+                                 (cons (if (odd? n) #t #f) acc)))))))
+              (float64->bits-be ;; big-endian IEEE 754
+               (lambda (v)
+                 (let ((bv (make-bytevector 8)))
+                   (bytevector-ieee-double-set! bv 0
+                     (if (flonum? v) v (inexact v))
+                     (endianness big))
+                   (let byte-loop ((bi 7) (acc mobius-nil))
+                     (if (< bi 0) acc
+                         (let ((byte (bytevector-u8-ref bv bi)))
+                           (let bit-loop ((bit 0) (acc acc))
+                             (if (= bit 8) (byte-loop (- bi 1) acc)
+                                 (bit-loop (+ bit 1)
+                                           (cons (if (fxlogbit? bit byte) #t #f)
+                                                 acc)))))))))))
+             (let* ((value (car arguments))
+                    (encoding (if (> (length arguments) 1)
+                                  (cadr arguments) "unsigned"))
+                    (endian (if (> (length arguments) 2)
+                                (caddr arguments) "big"))
+                    (little? (cond ((string=? endian "big") #f)
+                                   ((string=? endian "little") #t)
+                                   (else (error 'number->list
+                                                "endianness must be \"big\" or \"little\""
+                                                endian))))
+                    (maybe-reverse (if little? reverse-mobius (lambda (x) x))))
+               (cond
+                ((string=? encoding "unsigned")
+                 (if (and (integer? value) (>= value 0))
+                     (maybe-reverse (integer->bits-be value))
+                     (error 'number->list "expected non-negative integer" value)))
+                ((string=? encoding "signed")
+                 (if (integer? value)
+                     (maybe-reverse
+                      (cond
+                       ((zero? value) (cons #f mobius-nil))
+                       ((> value 0) (cons #f (integer->bits-be value)))
+                       (else (cons #t (integer->bits-be (- value))))))
+                     (error 'number->list "expected integer" value)))
+                ((string=? encoding "float64")
+                 (maybe-reverse (float64->bits-be value)))
+                (else
+                 (error 'number->list
+                        "encoding must be \"unsigned\", \"signed\", or \"float64\""
+                        encoding))))))
           ;; 41: pk (peek — debug print to stderr, returns last arg)
           ((41)
            (display ";;; " (current-error-port))
            (write arguments (current-error-port))
            (newline (current-error-port))
            (car (reverse arguments)))
-          ;; 42: bit-length (number of bits to represent integer)
+          ;; 42: list->number — convert list of booleans to number
+          ;; (list->number bits)                       — unsigned, big-endian
+          ;; (list->number bits "unsigned")            — MSB-first to non-negative integer
+          ;; (list->number bits "signed")              — sign-magnitude: first bit is sign
+          ;; (list->number bits "float64")             — 64 booleans to IEEE 754 double
+          ;; (list->number bits "unsigned" "little")   — LSB-first
+          ;; Endianness: "big" (default) or "little"
           ((42)
-           (let ((value (car arguments)))
-             (if (integer? value)
-                 (fxlength value)
-                 (error 'bit-length "not an integer" value))))
-          ;; 43: arithmetic-shift-right
-          ((43)
-           (fxarithmetic-shift-right (car arguments) (cadr arguments)))
-          ;; 44: arithmetic-shift-left
-          ((44)
-           (fxarithmetic-shift-left (car arguments) (cadr arguments)))
+           (letrec
+             ((reverse-mobius
+               (lambda (lst)
+                 (let loop ((cur lst) (acc mobius-nil))
+                   (if (mobius-nil? cur) acc
+                       (loop (cdr cur) (cons (car cur) acc))))))
+              (bits-be->integer ;; big-endian unsigned bits to integer
+               (lambda (lst)
+                 (let loop ((cur lst) (acc 0))
+                   (cond
+                    ((mobius-nil? cur) acc)
+                    ((pair? cur)
+                     (loop (cdr cur)
+                           (+ (ash acc 1)
+                              (if (mobius-truthy? (car cur)) 1 0))))
+                    (else (error 'list->number "expected list of booleans" cur))))))
+              (bits-be->float64 ;; big-endian 64 booleans to double
+               (lambda (bits)
+                 (let ((bv (make-bytevector 8)))
+                   (let loop ((remaining bits) (byte-idx 0) (bit 7) (byte-val 0))
+                     (cond
+                      ((= byte-idx 8)
+                       (bytevector-ieee-double-ref bv 0 (endianness big)))
+                      ((< bit 0)
+                       (bytevector-u8-set! bv byte-idx byte-val)
+                       (loop remaining (+ byte-idx 1) 7 0))
+                      ((mobius-nil? remaining)
+                       (error 'list->number "float64 requires exactly 64 booleans"))
+                      (else
+                       (loop (cdr remaining) byte-idx (- bit 1)
+                             (if (mobius-truthy? (car remaining))
+                                 (fxior byte-val (fxsll 1 bit))
+                                 byte-val)))))))))
+             (let* ((lst (car arguments))
+                    (encoding (if (> (length arguments) 1)
+                                  (cadr arguments) "unsigned"))
+                    (endian (if (> (length arguments) 2)
+                                (caddr arguments) "big"))
+                    (little? (cond ((string=? endian "big") #f)
+                                   ((string=? endian "little") #t)
+                                   (else (error 'list->number
+                                                "endianness must be \"big\" or \"little\""
+                                                endian))))
+                    (input (if little? (reverse-mobius lst) lst)))
+               (cond
+                ((string=? encoding "unsigned")
+                 (bits-be->integer input))
+                ((string=? encoding "signed")
+                 (if (mobius-nil? input)
+                     (error 'list->number "empty list for signed encoding")
+                     (let* ((negative? (mobius-truthy? (car input)))
+                            (magnitude (bits-be->integer (cdr input))))
+                       (if negative? (- magnitude) magnitude))))
+                ((string=? encoding "float64")
+                 (bits-be->float64 input))
+                (else
+                 (error 'list->number
+                        "encoding must be \"unsigned\", \"signed\", or \"float64\""
+                        encoding))))))
           (else
            (error 'apply-primitive "unknown primitive index" index))))))
 
@@ -775,17 +889,15 @@
        "eq?" "+" "-" "*" "/" "<" ">" "="
        "display"
        "assume"
-       "string-length"
+       "number->list"
        "pk"
-       "bit-length"
-       "arithmetic-shift-right"
-       "arithmetic-shift-left"))
+       "list->number"))
 
   (define make-initial-environment
     (lambda ()
       (let loop ((index 2) ;; 0=gamma, 1=lambda are special forms; start at 2=xeno
                  (environment (name-environment-empty)))
-        (if (> index 44)
+        (if (> index 42)
             ;; Add well-known bindings
             (let* ((environment (name-environment-extend environment (string->symbol "#true") #t))
                    (environment (name-environment-extend environment (string->symbol "#false") #f))

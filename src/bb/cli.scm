@@ -621,21 +621,23 @@
                                                 (string->symbol (caar remaining))
                                                 mobius-void))))))
           ;; Load each combiner and update bindings
+          ;; Skip combiners that fail to load (e.g. referencing removed primitives)
           (for-each
            (lambda (entry)
-             (let* ((name (string->symbol (car entry)))
-                    (function-hash (cdr entry))
-                    (value (load-combiner-value root function-hash
-                                                hash->name environment))
-                    ;; Assign name for self-reference
-                    (value (if (and (mobius-user-combiner? value)
-                                    (not (mobius-combiner-name value)))
-                               (make-mobius-combiner
-                                (mobius-combiner-clauses value)
-                                (mobius-combiner-environment value)
-                                name)
-                               value)))
-               (name-environment-set! environment name value)))
+             (guard (exn (#t (void)))  ;; leave pre-bound #void on failure
+               (let* ((name (string->symbol (car entry)))
+                      (function-hash (cdr entry))
+                      (value (load-combiner-value root function-hash
+                                                  hash->name environment))
+                      ;; Assign name for self-reference
+                      (value (if (and (mobius-user-combiner? value)
+                                      (not (mobius-combiner-name value)))
+                                 (make-mobius-combiner
+                                  (mobius-combiner-clauses value)
+                                  (mobius-combiner-environment value)
+                                  name)
+                                 value)))
+                 (name-environment-set! environment name value))))
            name-index)
           environment))))
 

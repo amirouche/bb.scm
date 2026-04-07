@@ -1,0 +1,1 @@
+((mobius-primitive-ref 1) ((mobius-bind 1)) ((mobius-primitive-ref 3) ((mobius-primitive-ref 26) (mobius-variable 1)) ((mobius-primitive-ref 31) 1 ((mobius-variable 0) ((mobius-primitive-ref 11) (mobius-variable 1)))) 0))

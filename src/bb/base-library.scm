@@ -40,6 +40,38 @@
       ;; capsule-unwrap — extract accessor
       "(define capsule-unwrap (gamma ((,type) (car (cdr (cdr type))))))"
 
+      ;; length — count elements in a list
+      "(define length
+         (lambda (lst)
+           (if (pair? lst)
+               (+ 1 (length (cdr lst)))
+               0)))"
+
+      ;; string-length — length of a string via string->list
+      "(define string-length (lambda (s) (length (string->list s))))"
+
+      ;; bit-length — number of bits via number->list
+      "(define bit-length (lambda (n) (length (number->list n))))"
+
+      ;; butlast — all elements except the last
+      "(define butlast
+         (lambda (lst)
+           (if (pair? (cdr lst))
+               (cons (car lst) (butlast (cdr lst)))
+               #nil)))"
+
+      ;; arithmetic-shift-right — drop last k bits
+      "(define arithmetic-shift-right
+         (lambda (n k)
+           (if (= k 0) n
+               (arithmetic-shift-right (list->number (butlast (number->list n))) (- k 1)))))"
+
+      ;; arithmetic-shift-left — multiply by 2, k times
+      "(define arithmetic-shift-left
+         (lambda (n k)
+           (if (= k 0) n
+               (arithmetic-shift-left (* n 2) (- k 1)))))"
+
       ;; error — display message and exit
       "(define error
          (lambda (code message data)

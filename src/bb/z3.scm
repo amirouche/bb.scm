@@ -139,54 +139,15 @@
   ;; Flag: have string helpers been emitted for this problem?
   (define *string-helpers-emitted* (make-parameter #f))
 
-  ;; Flag: has the bit-length helper been emitted?
-  (define *bit-length-helper-emitted* (make-parameter #f))
-
-  ;; Emit bb_bit_length: Int → Int recursive helper
-  (define ensure-bit-length-helper!
-    (lambda ()
-      (unless (*bit-length-helper-emitted*)
-        (*bit-length-helper-emitted* #t)
-        (*extra-define-funs*
-         (cons (string-append
-                "(define-fun-rec bb_bit_length ((n Int)) Int"
-                " (ite (<= n 0) 0 (+ 1 (bb_bit_length (div n 2)))))")
-               (*extra-define-funs*))))))
 
   ;; The string bound for the current problem, derived from check preconditions
   (define *z3-string-bound* (make-parameter 7))
 
   ;; Extract string length bound from preconditions.
-  ;; Looks for patterns like (< (string-length s) N) in the assume list.
-  ;; Returns the bound N, or the default from *z3-max-string-length*.
+  ;; string-length is now a base library combiner, so we use the default.
   (define extract-string-bound
     (lambda (preconditions env)
-      (let loop ((remaining preconditions))
-        (if (null? remaining)
-            (*z3-max-string-length*)
-            (let ((expr (car remaining)))
-              ;; Match (< (string-length VAR) N) or (> N (string-length VAR))
-              (if (and (pair? expr) (= 3 (length expr)))
-                  (let ((head (car expr))
-                        (arg1 (cadr expr))
-                        (arg2 (caddr expr)))
-                    (let ((val (guard (exn (#t #f))
-                                (name-environment-ref env head))))
-                      (if (and val (mobius-primitive? val)
-                               (= 35 (mobius-primitive-index val))  ;; <
-                               (pair? arg1)
-                               (= 2 (length arg1)))
-                          ;; (< (string-length s) N)
-                          (let ((inner-head (car arg1))
-                                (inner-val (guard (exn (#t #f))
-                                             (name-environment-ref env (car arg1)))))
-                            (if (and inner-val (mobius-primitive? inner-val)
-                                     (= 40 (mobius-primitive-index inner-val))  ;; string-length
-                                     (integer? arg2))
-                                arg2
-                                (loop (cdr remaining))))
-                          (loop (cdr remaining)))))
-                  (loop (cdr remaining))))))))
+      (*z3-max-string-length*)))
 
   ;; Emit bounded string<->list Z3 helpers into *extra-define-funs*.
   ;; Uses a chain of let-bindings to build up linearly (not exponentially).
@@ -433,14 +394,6 @@
           ((23) "true")
           ;; 25: string? — type check, translate as true for String vars
           ((25) "true")
-          ;; 40: string-length
-          ((40) (string-append "(str.len " (car translated-args) ")"))
-          ;; 42: bit-length
-          ((42)
-           (ensure-bit-length-helper!)
-           (string-append "(bb_bit_length " (car translated-args) ")"))
-          ;; 43: arithmetic-shift-right
-          ((43) (string-append "(div " (car translated-args) " (^ 2 " (cadr translated-args) "))"))
           (else
            (error 'z3-translate
                   (string-append "unsupported primitive "
@@ -479,15 +432,6 @@
           ((23) "(mk-bool false)")
           ;; 25: string?
           ((25) (string-append "(mk-bool ((_ is mk-str) " (car translated-args) "))"))
-          ;; 40: string-length — unwrap String, get length, rewrap Int
-          ((40) (string-append "(mk-int (str.len " (val-unwrap-str (car translated-args)) "))"))
-          ;; 42: bit-length — unwrap Int, apply helper, rewrap Int
-          ((42)
-           (ensure-bit-length-helper!)
-           (string-append "(mk-int (bb_bit_length " (val-unwrap-int (car translated-args)) "))"))
-          ;; 43: arithmetic-shift-right — unwrap Ints, div by 2^n, rewrap Int
-          ((43) (string-append "(mk-int (div " (val-unwrap-int (car translated-args))
-                               " (^ 2 " (val-unwrap-int (cadr translated-args)) ")))"))
           ;; 18: char->integer
           ((18) (string-append "(mk-int (str.to_code " (val-unwrap-str (car translated-args)) "))"))
           ;; 19: integer->char
@@ -870,7 +814,6 @@
       (parameterize ((*extra-define-funs* '())
                      (*translated-combiners* (make-hashtable symbol-hash symbol=?))
                      (*string-helpers-emitted* #f)
-                     (*bit-length-helper-emitted* #f)
                      (*val-mode* #f))
         (let* ((prop-clauses (mobius-combiner-clauses property))
                (prop-clause (car prop-clauses))
