@@ -331,18 +331,25 @@
       (let* ((mappings-directoryectory (store-path-join (store-combiner-directory root function-hash)
                                             "mappings"))
              (map-files (store-find-all-map-files mappings-directoryectory)))
-        (let loop ((remaining map-files))
+        ;; Among all mappings matching lang, return the most recently modified one.
+        (let loop ((remaining map-files) (best-mtime #f) (best-data #f))
           (if (null? remaining)
-              (error 'store-load-mapping-by-language
-                     (string-append "no mapping for language '" lang
-                                    "'. Use 'bb add <file> " lang
-                                    "' to create one.")
-                     function-hash)
-              (let ((map-data (call-with-input-file (car remaining) read)))
-                (let ((lang-entry (assq 'language map-data)))
-                  (if (and lang-entry (string=? (cdr lang-entry) lang))
-                      map-data
-                      (loop (cdr remaining))))))))))
+              (if best-data
+                  best-data
+                  (error 'store-load-mapping-by-language
+                         (string-append "no mapping for language '" lang
+                                        "'. Use 'bb add <file> " lang
+                                        "' to create one.")
+                         function-hash))
+              (let* ((path (car remaining))
+                     (map-data (call-with-input-file path read))
+                     (lang-entry (assq 'language map-data)))
+                (if (and lang-entry (string=? (cdr lang-entry) lang))
+                    (let ((mtime (file-modification-time path)))
+                      (if (or (not best-mtime) (time>? mtime best-mtime))
+                          (loop (cdr remaining) mtime map-data)
+                          (loop (cdr remaining) best-mtime best-data)))
+                    (loop (cdr remaining) best-mtime best-data))))))))
 
   ;; ================================================================
   ;; Config
