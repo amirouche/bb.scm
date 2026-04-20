@@ -10,7 +10,8 @@
           ~check-cli-lcs-lines
           ~check-cli-resolve-ref
           ~check-cli-show
-          ~check-cli-print)
+          ~check-cli-print
+          ~check-cli-doc-roundtrip)
 
   (import (chezscheme)
           (bb values)
@@ -1436,7 +1437,22 @@
                  (store-record-wip-lineage! root function-hash author "add"
                                       derived-from-hash #f
                                       (reverse check-hashes))))
-             main-hashes)))
+             main-hashes))
+          ;; Diff buffer checks vs store checks for unchanged combiners.
+          ;; When the main hash equals derived-from-hash the logic didn't change;
+          ;; any check present in the store but absent from the buffer is a retraction.
+          (when derived-from-hash
+            (let* ((buffer-hashes (reverse check-hashes))
+                   (store-checks (store-load-checks root derived-from-hash))
+                   (to-retract (filter (lambda (h) (not (member h buffer-hashes)))
+                                       store-checks)))
+              (unless (null? to-retract)
+                (for-each
+                 (lambda (main-pair)
+                   (when (equal? (car main-pair) derived-from-hash)
+                     (store-record-wip-retract-checks! root derived-from-hash author
+                                                       to-retract)))
+                 main-hashes)))))
         name-index)))
 
   ;; Display check failures and prompt user for action.
@@ -1475,9 +1491,12 @@
 
   ;; Full edit-save flow: parse, eval, run checks, store or handle failure.
   ;; Returns when done (possibly after re-edit loops).
+  ;; derived-from-hash: if non-#f, overrides original-hash in lineage (for --derived-from flag).
+  ;; original-hash: hash of the combiner being edited, used for check retraction diff.
   (define edit-save-flow
-    (lambda (source root name-index lang original-hash editor tmp-file)
-      (let* ((lang (or lang (guard (exn (#t "en"))
+    (lambda (source root name-index lang original-hash editor tmp-file . rest)
+      (let* ((derived-from-hash (if (null? rest) original-hash (car rest)))
+             (lang (or lang (guard (exn (#t "en"))
                               (car (store-config-languages root)))))
              (doc (source-extract-doc source))
              (expressions (mobius-read-all-string source))
@@ -1493,7 +1512,7 @@
                 ;; No checks — store directly
                 (begin
                   (edit-store-all! root name-index lang doc main-defines
-                                   check-defines name-lookup author original-hash)
+                                   check-defines name-lookup author derived-from-hash)
                   (display "Done. Use 'bb commit' to finalize.\n"))
                 ;; Run checks
                 (let ((results (edit-run-checks check-defines main-defines final-environment)))
@@ -1507,17 +1526,18 @@
                            (display "\n"))
                          results)
                         (edit-store-all! root name-index lang doc main-defines
-                                         check-defines name-lookup author original-hash)
+                                         check-defines name-lookup author derived-from-hash)
                         (display "Done. Use 'bb commit' to finalize.\n"))
                       ;; Some failed
                       (let ((action (edit-handle-failure results original-hash root)))
                         (when (eq? action 're-edit)
-                          (let ((status (system (string-append editor " " tmp-file))))
+                          (let ((status (system (string-append editor " " tmp-file " </dev/tty >/dev/tty"))))
                             (when (= status 0)
                               (let ((new-source (call-with-input-file tmp-file
                                                   get-string-all)))
                                 (edit-save-flow new-source root name-index lang
-                                                original-hash editor tmp-file))))))))))))))
+                                                original-hash editor tmp-file
+                                                derived-from-hash))))))))))))))
 
   ;; ================================================================
   ;; bb edit — denormalize stored combiner to editable source
@@ -1544,15 +1564,27 @@
       (when (null? arguments)
         (display "bb edit: missing ref\n" (current-error-port))
         (exit 1))
-      (let* ((arg-lang (if (and (not (null? (cdr arguments)))
-                                (not (and (>= (string-length (cadr arguments)) 2)
-                                          (char=? (string-ref (cadr arguments) 0) #\-)
-                                          (char=? (string-ref (cadr arguments) 1) #\-))))
-                           (cadr arguments)
+      (let* ((derived-from-raw
+              (let loop ((remaining arguments))
+                (cond ((null? remaining) #f)
+                      ((and (>= (string-length (car remaining)) 15)
+                            (string=? (substring (car remaining) 0 15) "--derived-from="))
+                       (substring (car remaining) 15 (string-length (car remaining))))
+                      (else (loop (cdr remaining))))))
+             (positional
+              (filter (lambda (a)
+                        (not (and (>= (string-length a) 15)
+                                  (string=? (substring a 0 15) "--derived-from="))))
+                      arguments))
+             (arg-lang (if (and (>= (length positional) 2)
+                                (not (and (>= (string-length (cadr positional)) 2)
+                                          (char=? (string-ref (cadr positional) 0) #\-)
+                                          (char=? (string-ref (cadr positional) 1) #\-))))
+                           (cadr positional)
                            #f))
              (root (store-find-root (current-directory)))
              (name-index (store-build-name-index root)))
-        (let-values (((hash ref-lang ref-mapping) (resolve-ref name-index root (car arguments))))
+        (let-values (((hash ref-lang ref-mapping) (resolve-ref name-index root (car positional))))
           (let* ((lang (or arg-lang ref-lang))
                  (hash->name (make-hash->name name-index root))
                  (body (store-load-combiner root hash))
@@ -1567,10 +1599,13 @@
                           (cdr doc-entry)
                           #f))
                  (surface (denormalize-tree body mapping hash->name))
-                 (display-name (or (hash->name hash) (car arguments)))
+                 (display-name (or (hash->name hash) (car positional)))
                  (name-str (if (symbol? display-name)
                               (symbol->string display-name)
                               display-name))
+                 (derived-from-hash
+                  (and derived-from-raw
+                       (let-values (((h l m) (resolve-ref name-index root derived-from-raw))) h)))
                  (editor (or (getenv "EDITOR") (getenv "VISUAL") "vi"))
                  (tmp-file (string-append "/tmp/bb-edit-" name-str ".scm")))
             ;; Build full edit buffer: doc + main define + check defines
@@ -1616,11 +1651,11 @@
                   (display (get-output-string buffer) port))
                 'replace))
             ;; Open editor and run save flow
-            (let ((status (system (string-append editor " " tmp-file))))
+            (let ((status (system (string-append editor " " tmp-file " </dev/tty >/dev/tty"))))
               (when (= status 0)
                 (let ((source (call-with-input-file tmp-file get-string-all)))
                   (edit-save-flow source root name-index lang hash
-                                  editor tmp-file)))))))))
+                                  editor tmp-file derived-from-hash)))))))))
 
   ;; ================================================================
   ;; bb commit — promote wip lineage to committed
@@ -3324,5 +3359,43 @@
                 (assert (not (string-contains? result "@")))
                 (assert (string-contains? result "define main"))))))
         (store-delete-directory! temp-dir))))
+
+  (define ~check-cli-doc-roundtrip
+    (lambda ()
+      (let* ((temp (format #f "/tmp/bb-doc-roundtrip-~a" (random 1000000)))
+             (body '((mobius-primitive-ref 1) ((mobius-bind 1)) (mobius-variable 1)))
+             (serialized (scheme-write-value body))
+             (hash (sha256-string serialized))
+             (author "tester")
+             (lang "en")
+             (mapping (list (cons 0 "identity") (cons 1 "x"))))
+        (mkdir temp)
+        ;; Write minimal config.scm so store operations work
+        (call-with-output-file (store-path-join temp "config.scm")
+          (lambda (p)
+            (display "((author ((email . \"\") (languages . (\"en\")) (name . \"tester\") (website . \"\"))) (remotes . ()))" p)))
+        ;; Store combiner with initial doc
+        (store-combiner! temp hash body)
+        (store-mapping! temp hash lang mapping "old doc")
+        (store-record-wip-lineage! temp hash author "add")
+        ;; Verify initial doc loads
+        (let ((map-data (store-load-preferred-mapping temp hash)))
+          (assert (string=? "old doc" (cdr (assq 'doc map-data)))))
+        ;; Simulate edit-save-flow: source with new doc comment + same define
+        (let* ((source ";; new doc\n\n(define identity (lambda (x) x))\n")
+               (name-index (store-build-name-index temp))
+               (null-editor "true")
+               (tmp-file (string-append temp "/edit.scm")))
+          (call-with-output-file tmp-file (lambda (p) (display source p)))
+          (edit-save-flow source temp name-index lang hash null-editor tmp-file))
+        ;; The mapping with "new doc" should now be preferred (latest)
+        (let ((map-data (store-load-preferred-mapping temp hash)))
+          (assert (string=? "new doc" (cdr (assq 'doc map-data)))))
+        ;; Old mapping must still exist (append-only)
+        (let ((all-mappings (store-list-mappings temp hash)))
+          (assert (>= (length all-mappings) 2))
+          (assert (member "old doc"
+                          (map (lambda (m) (cdr (assq 'doc (cdr m)))) all-mappings))))
+        (store-delete-directory! temp))))
 
   )

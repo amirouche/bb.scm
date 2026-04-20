@@ -42,6 +42,8 @@
           store-combiner-latest-timestamp
           store-load-checks-for-combiner
           store-load-checks
+          store-record-wip-retract-checks!
+          store-record-retract-checks!
           ~check-store-short-hash
           ~check-store-validate
           ~check-store-load-checks
@@ -235,6 +237,24 @@
             (lambda (port) (display content port))))
         content-hash)))
 
+
+  ;; Write a committed lineage record that retracts specific check hashes.
+  (define store-record-retract-checks!
+    (lambda (root function-hash author check-hashes)
+      (let* ((timestamp (store-current-iso-timestamp))
+             (alist (list (cons 'author author)
+                          (cons 'committed timestamp)
+                          (cons 'relation "retract-checks")
+                          (cons 'retract-checks check-hashes)))
+             (content (sorted-alist->string alist))
+             (content-hash (sha256-string content))
+             (lineage-dir (store-path-join (store-combiner-directory root function-hash) "lineage"))
+             (lineage-path (store-path-join lineage-dir (string-append content-hash ".committed.scm"))))
+        (unless (file-exists? lineage-path)
+          (store-ensure-directory lineage-dir)
+          (call-with-output-file lineage-path
+            (lambda (port) (display content port))))
+        content-hash)))
 
   ;; ================================================================
   ;; Load operations
@@ -449,9 +469,10 @@
                     (directory-list lineage-directory))
             '()))))
 
-  ;; Load the checks list for a combiner from its most recent lineage record.
-  ;; Scans both wip and committed lineage, returns the checks list from the
-  ;; record with the latest timestamp that has a checks field, or '() if none.
+  ;; Load checks using per-check timestamp ordering: for each check hash, collect
+  ;; all add and retract events across every lineage record, then keep only those
+  ;; whose most recent event is an add. Events from retract-checks records beat
+  ;; events from checks records when timestamps are equal (retract wins on tie).
   (define store-load-checks-for-combiner
     (lambda (root function-hash)
       (let* ((lineage-directory (store-path-join (store-combiner-directory root function-hash)
@@ -460,24 +481,60 @@
              (committed-files (store-list-committed-files root function-hash))
              (all-files (append
                          (map (lambda (f) (store-path-join lineage-directory f)) wip-files)
-                         (map (lambda (f) (store-path-join lineage-directory f)) committed-files))))
-        (let loop ((remaining all-files) (latest-ts #f) (latest-checks '()))
-          (if (null? remaining)
-              latest-checks
-              (guard (exn (#t (loop (cdr remaining) latest-ts latest-checks)))
-                (let* ((record (call-with-input-file (car remaining) read))
-                       (checks-entry (assq 'checks record)))
-                  (if checks-entry
-                      (let* ((ts (or (let ((c (assq 'committed record)))
-                                       (and c (cdr c)))
-                                     (let ((c (assq 'created record)))
-                                       (and c (cdr c)))))
-                             (newer? (and ts (or (not latest-ts)
-                                                  (string>? ts latest-ts)))))
+                         (map (lambda (f) (store-path-join lineage-directory f)) committed-files)))
+             ;; events: alist of check-hash -> (timestamp . action) where action is 'add or 'retract
+             ;; We keep the event with the latest timestamp per check hash.
+             ;; On equal timestamps, 'retract beats 'add.
+             (update-events
+              (lambda (events check-hash ts action)
+                (let ((existing (assoc check-hash events)))
+                  (if existing
+                      (let* ((prev-ts (cadr existing))
+                             (prev-action (cddr existing))
+                             (newer? (or (string>? ts prev-ts)
+                                         (and (string=? ts prev-ts)
+                                              (eq? action 'retract)))))
                         (if newer?
-                            (loop (cdr remaining) ts (cdr checks-entry))
-                            (loop (cdr remaining) latest-ts latest-checks)))
-                      (loop (cdr remaining) latest-ts latest-checks)))))))))
+                            (cons (cons check-hash (cons ts action))
+                                  (filter (lambda (e) (not (equal? (car e) check-hash))) events))
+                            events))
+                      (cons (cons check-hash (cons ts action)) events))))))
+        (let loop ((remaining all-files) (events '()))
+          (if (null? remaining)
+              (map car (filter (lambda (e) (eq? (cddr e) 'add)) events))
+              (guard (exn (#t (loop (cdr remaining) events)))
+                (let* ((record (call-with-input-file (car remaining) read))
+                       (ts (or (let ((c (assq 'committed record))) (and c (cdr c)))
+                               (let ((c (assq 'created record))) (and c (cdr c)))
+                               ""))
+                       (adds (let ((e (assq 'checks record)))
+                               (if (and e (list? (cdr e))) (cdr e) '())))
+                       (retracts (let ((e (assq 'retract-checks record)))
+                                   (if (and e (list? (cdr e))) (cdr e) '())))
+                       (events1 (fold-left (lambda (ev h) (update-events ev h ts 'add))
+                                           events adds))
+                       (events2 (fold-left (lambda (ev h) (update-events ev h ts 'retract))
+                                           events1 retracts)))
+                  (loop (cdr remaining) events2))))))))
+
+  ;; Write a lineage record that retracts specific check hashes. Append-only:
+  ;; store-load-checks-for-combiner will subtract these from the union.
+  (define store-record-wip-retract-checks!
+    (lambda (root function-hash author check-hashes)
+      (let* ((timestamp (store-current-iso-timestamp))
+             (alist (list (cons 'author author)
+                          (cons 'created timestamp)
+                          (cons 'relation "retract-checks")
+                          (cons 'retract-checks check-hashes)))
+             (content (sorted-alist->string alist))
+             (content-hash (sha256-string content))
+             (lineage-dir (store-path-join (store-combiner-directory root function-hash) "lineage"))
+             (lineage-path (store-path-join lineage-dir (string-append content-hash ".wip.scm"))))
+        (unless (file-exists? lineage-path)
+          (store-ensure-directory lineage-dir)
+          (call-with-output-file lineage-path
+            (lambda (port) (display content port))))
+        content-hash)))
 
   ;; Also support loading checks from legacy tree.scm format (alist with checks field).
   ;; This is used as a fallback when no lineage has checks.
@@ -967,30 +1024,46 @@
              (check-hash1 (sha256-string check-serialized1))
              (check-body2 '(lambda () (assert (= 4 (+ 2 2)))))
              (check-serialized2 (scheme-write-value check-body2))
-             (check-hash2 (sha256-string check-serialized2)))
+             (check-hash2 (sha256-string check-serialized2))
+             (check-body3 '(lambda () (assert (= 9 (+ 4 5)))))
+             (check-serialized3 (scheme-write-value check-body3))
+             (check-hash3 (sha256-string check-serialized3)))
         (mkdir temp)
-        ;; Store main and check combiners
         (store-combiner! temp main-hash main-body)
         (store-combiner! temp check-hash1 check-body1)
         (store-combiner! temp check-hash2 check-body2)
+        (store-combiner! temp check-hash3 check-body3)
         ;; No checks yet
         (assert (null? (store-load-checks-for-combiner temp main-hash)))
-        ;; Record lineage with checks
-        (store-record-wip-lineage! temp main-hash "tester" "add" #f #f
+        ;; Alice adds check1 and check2 at T1
+        (store-record-wip-lineage! temp main-hash "alice" "add" #f #f
                              (list check-hash1 check-hash2))
-        ;; Verify checks are returned
+        ;; Bob adds check3 independently at T1 (same second — retract-on-tie test later)
+        (store-record-wip-lineage! temp main-hash "bob" "add" #f #f
+                             (list check-hash3))
+        ;; All three should appear (union)
+        (let ((checks (store-load-checks-for-combiner temp main-hash)))
+          (assert (= 3 (length checks)))
+          (assert (member check-hash1 checks))
+          (assert (member check-hash2 checks))
+          (assert (member check-hash3 checks)))
+        ;; Alice retracts check2 at T2 > T1 — most recent action is retract, so removed
+        (sleep (make-time 'time-duration 0 1))
+        (store-record-wip-retract-checks! temp main-hash "alice" (list check-hash2))
         (let ((checks (store-load-checks-for-combiner temp main-hash)))
           (assert (= 2 (length checks)))
           (assert (member check-hash1 checks))
-          (assert (member check-hash2 checks)))
-        ;; Record new lineage with only one check — latest should win
-        ;; Sleep 1 second to ensure a different timestamp
+          (assert (not (member check-hash2 checks)))
+          (assert (member check-hash3 checks)))
+        ;; Alice re-adds check2 at T3 > T2 — most recent is now add again
         (sleep (make-time 'time-duration 0 1))
-        (store-record-wip-lineage! temp main-hash "tester" "edit" #f #f
-                             (list check-hash1))
+        (store-record-wip-lineage! temp main-hash "alice" "edit" #f #f
+                             (list check-hash2))
         (let ((checks (store-load-checks-for-combiner temp main-hash)))
-          (assert (= 1 (length checks)))
-          (assert (member check-hash1 checks)))
+          (assert (= 3 (length checks)))
+          (assert (member check-hash1 checks))
+          (assert (member check-hash2 checks))
+          (assert (member check-hash3 checks)))
         (store-delete-directory! temp))))
 
   (define ~check-store-timestamp
