@@ -1411,10 +1411,20 @@
                                                defined-name
                                                name-lookup)))
                (let* ((serialized (scheme-write-value normalized-tree))
-                      (function-hash (sha256-string serialized)))
+                      (function-hash (sha256-string serialized))
+                      ;; If this combiner already exists, the user is adding a
+                      ;; new mapping for the same body — record it as a
+                      ;; translation, not a fresh add. Explicit relation choices
+                      ;; (fork, refine, etc.) override.
+                      (pre-existing? (file-exists?
+                                      (store-combiner-tree-path root function-hash)))
+                      (effective-relation
+                       (if (and pre-existing? (string=? relation "add"))
+                           "translate"
+                           relation)))
                  (store-combiner! root function-hash normalized-tree)
                  (store-mapping! root function-hash lang mapping doc)
-                 (store-record-wip-lineage! root function-hash author relation
+                 (store-record-wip-lineage! root function-hash author effective-relation
                                       derived-from-hash)
                  (set! name-index
                    (cons (cons (symbol->string defined-name) function-hash)
@@ -1422,7 +1432,8 @@
                                    (not (string=? (car e)
                                                   (symbol->string defined-name))))
                                  name-index)))
-                 (set! main-hashes (cons (cons function-hash normalized-tree) main-hashes))
+                 (set! main-hashes (cons (list function-hash normalized-tree effective-relation)
+                                         main-hashes))
                  (display "  staged: ")
                  (display defined-name)
                  (display " -> ")
@@ -1463,8 +1474,9 @@
           (unless (null? check-hashes)
             (for-each
              (lambda (main-pair)
-               (let ((function-hash (car main-pair)))
-                 (store-record-wip-lineage! root function-hash author relation
+               (let ((function-hash (car main-pair))
+                     (effective-relation (caddr main-pair)))
+                 (store-record-wip-lineage! root function-hash author effective-relation
                                       derived-from-hash #f
                                       (reverse check-hashes))))
              main-hashes))
@@ -1702,7 +1714,7 @@
           (let* ((lang (or arg-lang ref-lang))
                  (hash->name (make-hash->name name-index root))
                  (body (store-load-combiner root hash))
-                 (check-hashes (store-load-checks root hash))
+                 (check-hashes (latest-committed-lineage-checks root hash))
                  (map-data (if lang
                                (store-load-mapping-by-language root hash lang)
                                (store-load-preferred-mapping root hash)))
@@ -1802,27 +1814,68 @@
              (let ((entry (assoc name name-index)))
                (if entry
                    (let* ((fhash (cdr entry))
-                          ;; Find most recent WIP lineage to propagate derived-from/relation
+                          ;; All wip records, sorted newest-first by 'created.
+                          ;; On timestamp ties (edit-store-all! writes a no-checks
+                          ;; record and then a with-checks record at the same
+                          ;; ISO-second), prefer the record with checks so we
+                          ;; don't promote the intermediate no-checks form.
                           (wip-files (store-list-wip-files root fhash))
-                          (wip-records
-                           (map (lambda (f) (load-lineage-record root fhash f))
-                                wip-files))
-                          ;; Sort by created timestamp descending, pick latest
-                          (latest-wip
-                           (if (null? wip-records) #f
-                               (car (sort (lambda (a b)
-                                            (string>? (cdr (assq 'created a))
-                                                      (cdr (assq 'created b))))
-                                          wip-records))))
-                          (wip-derived (and latest-wip
-                                           (let ((d (assq 'derived-from latest-wip)))
-                                             (and d (cdr d)))))
-                          (wip-relation (and latest-wip
-                                            (let ((r (assq 'relation latest-wip)))
-                                              (and r (cdr r))))))
+                          (wip-records-sorted
+                           (sort (lambda (a b)
+                                   (let ((ta (cdr (assq 'created a)))
+                                         (tb (cdr (assq 'created b))))
+                                     (cond
+                                      ((string>? ta tb) #t)
+                                      ((string>? tb ta) #f)
+                                      (else
+                                       (and (assq 'checks a)
+                                            (not (assq 'checks b)))))))
+                                 (map (lambda (f) (load-lineage-record root fhash f))
+                                      wip-files)))
+                          ;; "Add" records (have a relation other than retract-checks).
+                          (add-records
+                           (filter (lambda (r)
+                                     (let ((rel (assq 'relation r)))
+                                       (or (not rel)
+                                           (not (string=? (cdr rel) "retract-checks")))))
+                                   wip-records-sorted))
+                          ;; Retraction records.
+                          (retract-records
+                           (filter (lambda (r)
+                                     (let ((rel (assq 'relation r)))
+                                       (and rel (string=? (cdr rel) "retract-checks"))))
+                                   wip-records-sorted))
+                          (latest-add (if (null? add-records) #f (car add-records)))
+                          (wip-derived (and latest-add
+                                            (let ((d (assq 'derived-from latest-add)))
+                                              (and d (cdr d)))))
+                          (wip-relation (and latest-add
+                                             (let ((r (assq 'relation latest-add)))
+                                               (and r (cdr r)))))
+                          (wip-checks (and latest-add
+                                           (let ((c (assq 'checks latest-add)))
+                                             (and c (cdr c)))))
+                          ;; Anchor the relation to a specific predecessor record:
+                          ;; the most recent committed lineage on the derived-from
+                          ;; combiner at this moment.
+                          (predecessor-lineage
+                           (and wip-derived
+                                (latest-committed-lineage-hash root wip-derived))))
                      (store-record-lineage! root fhash author
                                       (or wip-relation "commit")
-                                      wip-derived)
+                                      wip-derived
+                                      #f
+                                      #f
+                                      wip-checks
+                                      predecessor-lineage)
+                     ;; Carry retractions through as separate committed records.
+                     (for-each
+                      (lambda (r)
+                        (let ((retracted (assq 'retract-checks r)))
+                          (when retracted
+                            (store-record-retract-checks!
+                             root fhash author (cdr retracted)))))
+                      retract-records)
                      (store-add-worklog-entry!
                       root fhash
                       (string-append "committed " name " ("
@@ -2613,6 +2666,32 @@
             (for-each walk (store-load-checks root h))))
         (reverse order))))
 
+  ;; Set of combiner hashes to push to <remote-name>: every committed combiner
+  ;; explicitly published to that remote, plus the transitive closure of their
+  ;; tree refs and lineage checks (committed only — uncommitted deps are
+  ;; skipped silently). Order is unspecified.
+  (define push-closure-for-remote
+    (lambda (root remote-name name-index)
+      (let* ((seen (make-hashtable string-hash string=?))
+             (visit
+              (lambda (fhash)
+                (let visit ((fhash fhash))
+                  (when (and fhash
+                             (store-has-committed-lineage? root fhash)
+                             (not (hashtable-ref seen fhash #f)))
+                    (hashtable-set! seen fhash #t)
+                    (guard (exn (#t (void)))
+                      (let ((body (store-load-combiner root fhash)))
+                        (for-each visit (extract-refs body))))
+                    (for-each visit (store-load-checks root fhash)))))))
+        (for-each
+         (lambda (entry)
+           (let ((fhash (cdr entry)))
+             (when (store-is-published? root remote-name fhash)
+               (visit fhash))))
+         name-index)
+        (vector->list (hashtable-keys seen)))))
+
   (define resolve-remote-or-die
     (lambda (root remote-name verb)
       (let ((remote-entry (assoc remote-name (store-config-remotes root))))
@@ -2801,6 +2880,104 @@
                            "lineage"
                            (car (sort string>? files))))))))
 
+  ;; Return the content-hash of the predecessor's most recent committed lineage
+  ;; record (i.e. the largest 'committed timestamp among committed lineage files).
+  ;; Returns #f if no committed lineage exists.
+  (define latest-committed-lineage-hash
+    (lambda (root function-hash)
+      (let* ((files (store-list-committed-files root function-hash))
+             (records (map (lambda (f)
+                             (cons f (load-lineage-record root function-hash f)))
+                           files))
+             (sorted (sort (lambda (a b)
+                             (string>? (cdr (assq 'committed (cdr a)))
+                                       (cdr (assq 'committed (cdr b)))))
+                           records)))
+        (cond
+         ((null? sorted) #f)
+         (else
+          (let* ((filename (car (car sorted)))
+                 (suffix-len (string-length ".committed.scm")))
+            (substring filename 0 (- (string-length filename) suffix-len))))))))
+
+  ;; Checks bb edit should pre-populate. If the most recent lineage record is
+  ;; a committed one, return its checks unchanged. If there are wip records
+  ;; created after the last committed record, fold them in chronological order:
+  ;;   - retract-checks records remove hashes
+  ;;   - records with a 'checks field overwrite the current set
+  ;;   - other records are ignored
+  ;; This matches the user's mental model: the editor shows what was last
+  ;; asserted (committed or in-flight), not the cumulative union of history.
+  (define latest-committed-lineage-checks
+    (lambda (root function-hash)
+      (let* ((committed-files (store-list-committed-files root function-hash))
+             (committed-records
+              (map (lambda (f) (load-lineage-record root function-hash f))
+                   committed-files))
+             (committed-add-records
+              (filter (lambda (r)
+                        (let ((rel (assq 'relation r)))
+                          (or (not rel)
+                              (not (string=? (cdr rel) "retract-checks")))))
+                      committed-records))
+             (latest-committed
+              (cond
+               ((null? committed-add-records) #f)
+               (else
+                (car (sort (lambda (a b)
+                             (string>? (cdr (assq 'committed a))
+                                       (cdr (assq 'committed b))))
+                           committed-add-records)))))
+             (committed-cutoff
+              (and latest-committed (cdr (assq 'committed latest-committed))))
+             (initial-checks
+              (if latest-committed
+                  (let ((c (assq 'checks latest-committed)))
+                    (if c (cdr c) '()))
+                  '()))
+             (wip-files (store-list-wip-files root function-hash))
+             (wip-records
+              (map (lambda (f) (load-lineage-record root function-hash f))
+                   wip-files))
+             (wip-newer
+              (filter (lambda (r)
+                        (let ((c (assq 'created r)))
+                          (and c
+                               (or (not committed-cutoff)
+                                   (string>? (cdr c) committed-cutoff)))))
+                      wip-records))
+             (wip-sorted
+              (sort (lambda (a b)
+                      (let ((ta (cdr (assq 'created a)))
+                            (tb (cdr (assq 'created b))))
+                        (cond
+                         ((string<? ta tb) #t)
+                         ((string<? tb ta) #f)
+                         ;; Within ties, the no-checks intermediate write must
+                         ;; precede the with-checks final write so the latter
+                         ;; overwrites it.
+                         (else
+                          (and (not (assq 'checks a))
+                               (assq 'checks b))))))
+                    wip-newer)))
+        (cond
+         ((null? wip-sorted) initial-checks)
+         (else
+          (fold-left
+           (lambda (current record)
+             (let ((rel (assq 'relation record)))
+               (cond
+                ((and rel (string=? (cdr rel) "retract-checks"))
+                 (let ((rch (assq 'retract-checks record)))
+                   (if rch
+                       (filter (lambda (h) (not (member h (cdr rch)))) current)
+                       current)))
+                (else
+                 (let ((c (assq 'checks record)))
+                   (if c (cdr c) current))))))
+           initial-checks
+           wip-sorted))))))
+
   (define command-anchor
     (lambda (arguments)
       (when (null? arguments)
@@ -2935,19 +3112,19 @@
           (exit 1))
         (let* ((remote-path (store-remote-entry-path remote-entry))
                (name-index (store-build-name-index root))
+               (hash->name (make-hash->name name-index root))
+               (short-hash (store-make-short-hash (store-list-all-stored-hashes root)))
+               (to-push (push-closure-for-remote root remote-name name-index))
                (count 0))
           (store-ensure-directory (store-path-join remote-path "combiners"))
           (for-each
-           (lambda (entry)
-             (let ((fhash (cdr entry)))
-               (when (and (store-has-committed-lineage? root fhash)
-                          (store-is-published? root remote-name fhash))
-                 (store-copy-combiner! root remote-path fhash)
-                 (set! count (+ count 1))
-                 (display "  pushed: ")
-                 (display (car entry))
-                 (newline))))
-           name-index)
+           (lambda (fhash)
+             (store-copy-combiner! root remote-path fhash)
+             (set! count (+ count 1))
+             (display "  pushed: ")
+             (display (or (hash->name fhash) (short-hash fhash)))
+             (newline))
+           to-push)
           (display count)
           (display " combiner(s) pushed to ")
           (display remote-name)
@@ -3020,19 +3197,19 @@
              ;; Push to remote (if not read-only)
              (if (store-remote-entry-read-only? remote-entry)
                  (display "  Skipping push: remote is read-only.\n")
-                 (let ((name-index (store-build-name-index root)))
+                 (let* ((name-index (store-build-name-index root))
+                        (hash->name (make-hash->name name-index root))
+                        (short-hash (store-make-short-hash (store-list-all-stored-hashes root)))
+                        (to-push (push-closure-for-remote root remote-name name-index)))
                    (store-ensure-directory (store-path-join remote-path "combiners"))
                    (for-each
-                    (lambda (entry)
-                      (let ((fhash (cdr entry)))
-                        (when (and (store-has-committed-lineage? root fhash)
-                                   (store-is-published? root remote-name fhash))
-                          (store-copy-combiner! root remote-path fhash)
-                          (set! push-count (+ push-count 1))
-                          (display "  pushed: ")
-                          (display (car entry))
-                          (newline))))
-                    name-index)))
+                    (lambda (fhash)
+                      (store-copy-combiner! root remote-path fhash)
+                      (set! push-count (+ push-count 1))
+                      (display "  pushed: ")
+                      (display (or (hash->name fhash) (short-hash fhash)))
+                      (newline))
+                    to-push)))
              (display "  ")
              (display pull-count)
              (display " pulled, ")
