@@ -608,11 +608,15 @@
                   (string->symbol (caar remaining))
                   (loop (cdr remaining))))))))
 
-  ;; Load a single combiner from the store, denormalize, and evaluate
+  ;; Load a single combiner from the store, denormalize, and evaluate.
+  ;; Use the preferred-language mapping so that the denormalized body's
+  ;; free-variable references (and the combiner's self-name in recursive
+  ;; calls) resolve against names actually present in the name index,
+  ;; which is also built from preferred-language mappings.
   (define load-combiner-value
     (lambda (root function-hash hash->name environment)
       (let* ((body (store-load-combiner root function-hash))
-             (map-data (store-load-first-mapping root function-hash))
+             (map-data (store-load-preferred-mapping root function-hash))
              (mapping (cdr (assq 'mapping map-data)))
              (surface (denormalize-tree body mapping hash->name)))
         (mobius-eval surface environment))))
