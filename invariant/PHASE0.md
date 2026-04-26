@@ -70,3 +70,22 @@ The store now contains the spike combiners (`spike-system`, `spike-port`,
 store is append-only, so they remain. They are unreferenced by Phase 1 work
 beyond `mob-append` and `str-append`, which we will keep and re-add under
 their three-language mappings.
+
+## Phase 2 addendum — stale manifest name resolution
+
+When Phase 1 manifests (2 posts each) were updated to Phase 2 manifests (30
+posts each), the old combiner hashes were still registered under the same
+name. `store-load-preferred-mapping` resolves ties between same-language
+mappings by alphabetical hash order — so the Phase 1 hash (alphabetically
+earlier) would win and the generator kept producing 2-post output.
+
+**Fix applied:** `bb mapping delete <name>@<lang>@<mapping-hash>` removes the
+stale name mapping from each old combiner. Then re-add `manifest.scm` and
+`generate.*.scm` so they compile against the new hash. The old combiner trees
+remain in the store (append-only), but their names no longer appear in the
+index.
+
+**Lesson:** In the bb store, re-adding a changed combiner does not atomically
+update the name index. The new hash is registered under the same name, creating
+an ambiguity that resolves by alphabet. Explicitly delete old name mappings
+when updating a load-bearing combiner across a regeneration cycle.
