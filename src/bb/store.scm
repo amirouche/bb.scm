@@ -658,30 +658,35 @@
                                 latest))))))))))
 
   ;; Scan the store and build a name→hash index.
-  ;; For each combiner, extracts the name from its mapping (index 0).
-  ;; When multiple combiners share a name, keeps the one with the
-  ;; latest lineage timestamp.
+  ;; Registers ALL language mappings for each combiner, so alternate-language
+  ;; names (e.g. identidad, identite) resolve alongside the preferred-language name.
+  ;; When multiple different combiners share a name, all are exposed as
+  ;; name@shortHash entries; resolve-name-to-hash picks the newest by lineage
+  ;; timestamp when the caller uses the bare name.
   ;; Returns a sorted alist: ((name . hash) ...)
-  ;; When multiple combiners share the same name, disambiguates as name@shortHash.
   (define store-build-name-index
     (lambda (root)
       (let* ((all-hashes (store-list-all-stored-hashes root))
              (short-hash (store-make-short-hash all-hashes))
              ;; name-table: name -> list of hashes
              (name-table (make-hashtable string-hash string=?)))
-        ;; For each combiner, collect all names
+        ;; For each combiner, register ALL its language mapping names
         (for-each
          (lambda (function-hash)
-           (guard (exn (#t (void)))  ;; skip combiners with broken mappings
-             (let* ((map-data (store-load-preferred-mapping root function-hash))
-                    (mapping (cdr (assq 'mapping map-data)))
-                    (name-entry (assv 0 mapping)))
-               (when name-entry
-                 (let* ((name (cdr name-entry))
-                        (existing (hashtable-ref name-table name '())))
-                   (unless (member function-hash existing)
-                     (hashtable-set! name-table name
-                                     (cons function-hash existing))))))))
+           (guard (exn (#t (void)))
+             (for-each
+              (lambda (mapping-entry)
+                (guard (exn (#t (void)))
+                  (let* ((map-data (cdr mapping-entry))
+                         (mapping (cdr (assq 'mapping map-data)))
+                         (name-entry (assv 0 mapping)))
+                    (when name-entry
+                      (let* ((name (cdr name-entry))
+                             (existing (hashtable-ref name-table name '())))
+                        (unless (member function-hash existing)
+                          (hashtable-set! name-table name
+                                          (cons function-hash existing))))))))
+              (store-list-mappings root function-hash))))
          all-hashes)
         ;; Convert to sorted alist, disambiguating collisions
         (let-values (((keys values) (hashtable-entries name-table)))
@@ -695,12 +700,11 @@
                             ;; Unique name — no disambiguation needed
                             (loop (+ i 1)
                                   (cons (cons name (car hashes)) acc))
-                            ;; Collision — disambiguate with name@shortHash
+                            ;; Collision — all hashes disambiguated as name@shortHash
                             (loop (+ i 1)
                                   (append
                                    (map (lambda (h)
-                                          (cons (string-append name "@" (short-hash h))
-                                                h))
+                                          (cons (string-append name "@" (short-hash h)) h))
                                         hashes)
                                    acc)))))))))))
 

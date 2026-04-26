@@ -1426,6 +1426,15 @@
                        (if (and pre-existing? (string=? relation "add"))
                            "translate"
                            relation)))
+                 ;; Shadow note: warn when this name already resolves to a different hash
+                 (let* ((name-str (symbol->string defined-name))
+                        (existing-entry (assoc name-str name-index)))
+                   (when (and existing-entry
+                              (not (string=? (cdr existing-entry) function-hash)))
+                     (display (string-append "  note: '" name-str "' shadows "
+                                             (substring (cdr existing-entry) 0
+                                                        (min 12 (string-length (cdr existing-entry))))
+                                             "\n"))))
                  (store-combiner! root function-hash normalized-tree)
                  (store-mapping! root function-hash lang mapping doc)
                  (store-record-wip-lineage! root function-hash author effective-relation
@@ -2605,7 +2614,24 @@
                    (display "  ")
                    (display r)
                    (newline))
-                 (reverse results))))))))))
+                 (reverse results))))
+              ;; Show shadowed entries: older combiners that shared this base name
+              (let* ((base-name (car (string-split-at-sign ref-string)))
+                     (prefix (string-append base-name "@"))
+                     (shadowed (filter (lambda (e)
+                                         (let ((k (car e)) (h (cdr e)))
+                                           (and (not (string=? h combiner-hash))
+                                                (>= (string-length k) (string-length prefix))
+                                                (string=? (substring k 0 (string-length prefix))
+                                                          prefix))))
+                                       name-index)))
+                (when (not (null? shadowed))
+                  (for-each
+                   (lambda (entry)
+                     (display "  shadowed: ")
+                     (display (car entry))
+                     (newline))
+                   shadowed)))))))))
 
   ;; ================================================================
   ;; bb worklog — time-stamped work log entries
