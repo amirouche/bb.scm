@@ -38,11 +38,15 @@
   ;;   bb search query                — search combiners
   ;;   bb worklog (name|hash) [msg]   — time-stamped work log
   ;;   bb validate                    — verify store integrity
-  ;;   bb anchor remote               — push to remote store
+  ;;   bb anchor <ref>                — request / upgrade OpenTimestamps proof
   ;;   bb remote add <name> <url>     — add a remote <name> at <url>
   ;;   bb remote remove <name>        — remove remote <name>
   ;;   bb remote list                 — list remotes
+  ;;   bb remote push <name>          — push committed combiners to remote
+  ;;   bb remote pull <name>          — pull committed combiners from remote
   ;;   bb remote sync                 — pull and push all remotes
+  ;;   bb remote publish <name> <ref> — mark ref public to <name>
+  ;;   bb remote stop <name> <ref>    — stop publishing ref to <name>
   ;;   bb repl                        — interactive Seed session
   ;;   bb store init                  — create new mobius-store
   ;;   bb store info                  — show store statistics
@@ -73,15 +77,19 @@
       (display "  bb eval <expression>                    Evaluate a single expression\n")
       (display "  bb log [ref]                            Show timeline\n")
       (display "  bb print <ref>                          Output Chez Scheme library with all dependencies\n")
-      (display "  bb anchor <remote>                     Push combiners to a remote store\n")
+      (display "  bb anchor <ref>                         Request or upgrade OpenTimestamps proof\n")
       (display "  bb refactor <ref> <ref> <ref> [<ref>]   Replace old with new in root tree\n")
       (display "  bb mapping list <ref>                   List all mappings for a combiner\n")
-      (display "  bb mapping delete <ref> <hash-prefix>   Delete a mapping by hash prefix\n")
+      (display "  bb mapping delete <ref>                 Delete a mapping (ref must include mapping hash)\n")
       (display "  bb mapping set <ref> <key> <value>      Set a mapping entry (0=name, 1+=params)\n")
       (display "  bb remote add <name> <path>             Add a remote store endpoint\n")
       (display "  bb remote list                          List configured remote store endpoints\n")
       (display "  bb remote remove <name>                 Remove a remote store endpoint\n")
+      (display "  bb remote push <name>                   Push committed combiners to remote\n")
+      (display "  bb remote pull <name>                   Pull committed combiners from remote\n")
       (display "  bb remote sync                          Pull and push all configured remotes\n")
+      (display "  bb remote publish <name> <ref>          Mark ref (and closure) public to <name>\n")
+      (display "  bb remote stop <name> <ref>             Stop publishing ref to <name>\n")
       (display "  bb repl                                 Interactive Seed session\n")
       (display "  bb resolve <ref>                        Resolve ref to full spec\n")
       (display "  bb review <ref>                         Mark combiner as reviewed\n")
@@ -578,7 +586,7 @@
                 (set! name-index
                   (edit-store-all! root name-index lang doc main-defines
                                    check-defines name-lookup author
-                                   derived-from-hash))
+                                   derived-from-hash relation))
                 (display "Done. Use 'bb commit' to finalize.\n")))))))))
 
   ;; Build a hash->name reverse lookup from a name-index and store.
@@ -709,6 +717,16 @@
   ;; bb status — show working state
   ;; ================================================================
 
+  ;; Anchor status of a combiner. Returns 'anchored (final .ots present),
+  ;; 'pending (only .ots.pending present), or #f (neither).
+  (define combiner-anchor-status
+    (lambda (root function-hash)
+      (let ((tree-path (store-combiner-tree-path root function-hash)))
+        (cond
+         ((file-exists? (string-append tree-path ".ots")) 'anchored)
+         ((file-exists? (string-append tree-path ".ots.pending")) 'pending)
+         (else #f)))))
+
   (define command-status
     (lambda ()
       (let* ((root (store-find-root (current-directory)))
@@ -724,14 +742,26 @@
                         (fhash (cdr entry))
                         (committed? (store-has-committed-lineage? root fhash))
                         (wip? (pair? (store-list-wip-files root fhash)))
-                        (reviewed? (store-is-reviewed? root fhash)))
+                        (reviewed? (store-is-reviewed? root fhash))
+                        (anchor (combiner-anchor-status root fhash))
+                        (tags (filter (lambda (t) t)
+                                      (list (cond (committed? "committed")
+                                                  (wip? "wip")
+                                                  (else "unknown"))
+                                            (and reviewed? "reviewed")
+                                            (case anchor
+                                              ((anchored) "anchored")
+                                              ((pending) "anchor-pending")
+                                              (else #f))))))
                    (display "  ")
                    (display name)
-                   (cond
-                    ((and committed? reviewed?) (display "  [committed, reviewed]"))
-                    (committed? (display "  [committed]"))
-                    (wip? (display "  [wip]"))
-                    (else (display "  [unknown]")))
+                   (display "  [")
+                   (let loop ((ts tags) (first? #t))
+                     (unless (null? ts)
+                       (unless first? (display ", "))
+                       (display (car ts))
+                       (loop (cdr ts) #f)))
+                   (display "]")
                    (newline)))
                name-index))))))
 
@@ -1369,7 +1399,7 @@
   ;; Check defines are stored next, then main tree.scm is updated with check hashes.
   (define edit-store-all!
     (lambda (root name-index lang doc main-defines check-defines
-                  name-lookup author derived-from-hash)
+                  name-lookup author derived-from-hash relation)
       (let ((main-hashes '()))
         ;; Store each main combiner first (without checks initially)
         (for-each
@@ -1384,7 +1414,7 @@
                       (function-hash (sha256-string serialized)))
                  (store-combiner! root function-hash normalized-tree)
                  (store-mapping! root function-hash lang mapping doc)
-                 (store-record-wip-lineage! root function-hash author "add"
+                 (store-record-wip-lineage! root function-hash author relation
                                       derived-from-hash)
                  (set! name-index
                    (cons (cons (symbol->string defined-name) function-hash)
@@ -1434,7 +1464,7 @@
             (for-each
              (lambda (main-pair)
                (let ((function-hash (car main-pair)))
-                 (store-record-wip-lineage! root function-hash author "add"
+                 (store-record-wip-lineage! root function-hash author relation
                                       derived-from-hash #f
                                       (reverse check-hashes))))
              main-hashes))
@@ -1468,6 +1498,21 @@
                (line (get-line port)))
           (close-port port)
           (if (eof-object? line) #f line)))))
+
+  ;; After a successful edit, ask the user to flag the change.
+  ;; Returns "refine" or "fork". Defaults to "refine" when input is unclear.
+  (define edit-prompt-relation
+    (lambda ()
+      (flush-output-port (current-output-port))
+      (display "\nFlag change as (r)efine or (f)ork? [r] ")
+      (flush-output-port (current-output-port))
+      (let ((response (edit-read-tty-line)))
+        (cond
+         ((and (string? response)
+               (or (string=? response "f")
+                   (string=? response "fork")))
+          "fork")
+         (else "refine")))))
 
   ;; Display an error message and prompt user for action.
   ;; Returns symbol: re-edit or exit.
@@ -1560,17 +1605,18 @@
                                          editor tmp-file derived-from-hash)))
                         (let* ((final-environment (cadr eval-result))
                                (try-store
-                                (lambda ()
+                                (lambda (relation)
                                   (guard (exn (#t (cons 'error
                                                         (if (message-condition? exn)
                                                             (condition-message exn)
                                                             "store error"))))
                                     (edit-store-all! root name-index lang doc main-defines
-                                                     check-defines name-lookup author derived-from-hash)
+                                                     check-defines name-lookup author
+                                                     derived-from-hash relation)
                                     'ok))))
                           (if (null? check-defines)
                               ;; No checks — store directly
-                              (let ((store-result (try-store)))
+                              (let ((store-result (try-store (edit-prompt-relation))))
                                 (if (eq? store-result 'ok)
                                     (display "Done. Use 'bb commit' to finalize.\n")
                                     (let ((action (edit-prompt-on-error (cdr store-result) original-hash root source)))
@@ -1588,7 +1634,7 @@
                                          (display (car r))
                                          (display "\n"))
                                        results)
-                                      (let ((store-result (try-store)))
+                                      (let ((store-result (try-store (edit-prompt-relation))))
                                         (if (eq? store-result 'ok)
                                             (display "Done. Use 'bb commit' to finalize.\n")
                                             (let ((action (edit-prompt-on-error (cdr store-result) original-hash root source)))
@@ -1777,6 +1823,10 @@
                      (store-record-lineage! root fhash author
                                       (or wip-relation "commit")
                                       wip-derived)
+                     (store-add-worklog-entry!
+                      root fhash
+                      (string-append "committed " name " ("
+                                     (or wip-relation "commit") ")"))
                      (set! count (+ count 1))
                      (display "  committed: ")
                      (display name)
@@ -2501,9 +2551,11 @@
                     (display ".\n"))
                   (for-each
                    (lambda (entry)
+                     (display "=== ")
                      (display (cdr (assq 'timestamp entry)))
-                     (display "  ")
+                     (display " ===\n")
                      (display (cdr (assq 'message entry)))
+                     (newline)
                      (newline))
                    entries)))))))
 
@@ -2541,54 +2593,251 @@
               (display " error(s) found.\n"))))))
 
   ;; ================================================================
-  ;; bb anchor — push combiners to a remote store
+  ;; Per-remote visibility — bb remote publish / bb remote stop
   ;; ================================================================
+
+  ;; Walk dependency closure: start from root-hash, follow tree.scm refs,
+  ;; and include check hashes recorded in the latest committed lineage.
+  ;; Returns list of hashes (root first, deps after), no duplicates.
+  (define compute-publish-closure
+    (lambda (root start-hash)
+      (let ((seen (make-hashtable string-hash string=?))
+            (order '()))
+        (let walk ((h start-hash))
+          (unless (hashtable-ref seen h #f)
+            (hashtable-set! seen h #t)
+            (set! order (cons h order))
+            (guard (exn (#t (void)))
+              (let ((body (store-load-combiner root h)))
+                (for-each walk (extract-refs body))))
+            (for-each walk (store-load-checks root h))))
+        (reverse order))))
+
+  (define resolve-remote-or-die
+    (lambda (root remote-name verb)
+      (let ((remote-entry (assoc remote-name (store-config-remotes root))))
+        (unless remote-entry
+          (display (string-append "bb remote " verb ": unknown remote '"
+                                  remote-name "'. Use 'bb remote add' first.\n")
+                   (current-error-port))
+          (exit 1))
+        remote-entry)))
+
+  (define command-remote-publish
+    (lambda (root rest)
+      (when (or (null? rest) (null? (cdr rest)))
+        (display "bb remote publish: usage: bb remote publish <remote> <ref>\n"
+                 (current-error-port))
+        (exit 1))
+      (let* ((remote-name (car rest))
+             (ref (cadr rest)))
+        (resolve-remote-or-die root remote-name "publish")
+        (let* ((name-index (store-build-name-index root))
+               (author (store-config-author root))
+               (hash->name (make-hash->name name-index root))
+               (short-hash (store-make-short-hash (store-list-all-stored-hashes root))))
+          (let-values (((target-hash _l _m) (resolve-ref name-index root ref)))
+            (unless (store-has-committed-lineage? root target-hash)
+              (display "bb remote publish: ref has no committed lineage. Run 'bb commit' first.\n"
+                       (current-error-port))
+              (exit 1))
+            (let* ((closure (compute-publish-closure root target-hash))
+                   (unpublished (filter (lambda (h)
+                                          (not (store-is-published? root remote-name h)))
+                                        closure))
+                   (deps (cdr closure)))
+              (cond
+               ((null? unpublished)
+                (display "Already published to ")
+                (display remote-name)
+                (display ".\n"))
+               ((null? deps)
+                (store-mark-published! root remote-name target-hash author)
+                (display "Published ")
+                (display (or (hash->name target-hash) (short-hash target-hash)))
+                (display " to ")
+                (display remote-name)
+                (newline))
+               (else
+                (display "Closure to publish to ")
+                (display remote-name)
+                (display ":\n")
+                (for-each
+                 (lambda (h)
+                   (display "  ")
+                   (display (or (hash->name h) (short-hash h)))
+                   (display " [")
+                   (display (short-hash h))
+                   (display "]")
+                   (when (store-is-published? root remote-name h)
+                     (display " (already public)"))
+                   (newline))
+                 closure)
+                (flush-output-port (current-output-port))
+                (display "\nPublish closure (")
+                (display (length unpublished))
+                (display " ref(s))? [Y/n] ")
+                (flush-output-port (current-output-port))
+                (let* ((response (edit-read-tty-line))
+                       (publish-deps?
+                        (or (not (string? response))
+                            (string=? response "")
+                            (string=? response "y")
+                            (string=? response "Y")
+                            (string=? response "yes"))))
+                  (cond
+                   (publish-deps?
+                    (for-each
+                     (lambda (h) (store-mark-published! root remote-name h author))
+                     unpublished)
+                    (display (length unpublished))
+                    (display " ref(s) published to ")
+                    (display remote-name)
+                    (display ".\n"))
+                   (else
+                    (store-mark-published! root remote-name target-hash author)
+                    (display "Published only ")
+                    (display (or (hash->name target-hash) (short-hash target-hash)))
+                    (display " to ")
+                    (display remote-name)
+                    (display ". Closure incomplete — push will leave dangling references.\n"
+                             (current-error-port)))))))))))))
+
+  (define command-remote-stop
+    (lambda (root rest)
+      (when (or (null? rest) (null? (cdr rest)))
+        (display "bb remote stop: usage: bb remote stop <remote> <ref>\n"
+                 (current-error-port))
+        (exit 1))
+      (let* ((remote-name (car rest))
+             (ref (cadr rest)))
+        (resolve-remote-or-die root remote-name "stop")
+        (let* ((name-index (store-build-name-index root))
+               (hash->name (make-hash->name name-index root))
+               (short-hash (store-make-short-hash (store-list-all-stored-hashes root))))
+          (let-values (((target-hash _l _m) (resolve-ref name-index root ref)))
+            (cond
+             ((store-is-published? root remote-name target-hash)
+              (store-unmark-published! root remote-name target-hash)
+              (display "Stopped publishing ")
+              (display (or (hash->name target-hash) (short-hash target-hash)))
+              (display " to ")
+              (display remote-name)
+              (newline))
+             (else
+              (display "Not currently published to ")
+              (display remote-name)
+              (display ".\n"))))))))
+
+  ;; ================================================================
+  ;; bb anchor — request or upgrade an OpenTimestamps proof for a ref
+  ;;
+  ;; Anchors the latest committed lineage record and tree.scm.
+  ;; State is encoded by which proof file exists next to the artifact:
+  ;;   <artifact>.ots          — confirmed (Bitcoin-anchored)
+  ;;   <artifact>.ots.pending  — calendar receipt, awaiting confirmation
+  ;;   neither                 — not yet anchored
+  ;; Action chosen automatically per artifact:
+  ;;   confirmed → skip
+  ;;   pending   → ots upgrade, then ots verify; on success rename to .ots
+  ;;   none      → ots stamp, then ots upgrade, then ots verify
+  ;; Requires the `ots` CLI on PATH.
+  ;; ================================================================
+
+  (define ots-available?
+    (lambda ()
+      (= 0 (system "command -v ots > /dev/null 2>&1"))))
+
+  (define ots-stamp!
+    (lambda (path)
+      (= 0 (system (string-append "ots stamp " path " > /dev/null 2>&1")))))
+
+  (define ots-upgrade!
+    (lambda (path)
+      (= 0 (system (string-append "ots upgrade " path " > /dev/null 2>&1")))))
+
+  (define ots-verify!
+    (lambda (path)
+      (= 0 (system (string-append "ots verify " path " > /dev/null 2>&1")))))
+
+  ;; Smart anchor for one artifact path. Returns a status symbol.
+  (define anchor-artifact!
+    (lambda (artifact-path)
+      (let ((final-path (string-append artifact-path ".ots"))
+            (pending-path (string-append artifact-path ".ots.pending")))
+        (cond
+         ((not (file-exists? artifact-path))
+          'missing)
+         ((file-exists? final-path)
+          'already-anchored)
+         ((file-exists? pending-path)
+          (ots-upgrade! pending-path)
+          (cond
+           ((ots-verify! pending-path)
+            (rename-file pending-path final-path)
+            'upgraded)
+           (else 'still-pending)))
+         (else
+          (cond
+           ((not (ots-stamp! artifact-path)) 'stamp-failed)
+           (else
+            ;; ots stamp writes <artifact>.ots; mark pending until verified.
+            (when (file-exists? final-path)
+              (rename-file final-path pending-path))
+            (ots-upgrade! pending-path)
+            (cond
+             ((ots-verify! pending-path)
+              (rename-file pending-path final-path)
+              'anchored)
+             (else 'requested)))))))))
+
+  (define latest-committed-lineage-path
+    (lambda (root function-hash)
+      (let ((files (store-list-committed-files root function-hash)))
+        (cond
+         ((null? files) #f)
+         (else
+          (store-path-join (store-combiner-directory root function-hash)
+                           "lineage"
+                           (car (sort string>? files))))))))
 
   (define command-anchor
     (lambda (arguments)
       (when (null? arguments)
-        (display "bb anchor: missing remote name\n" (current-error-port))
+        (display "bb anchor: missing ref\n" (current-error-port))
         (exit 1))
-      (let* ((remote-name (car arguments))
+      (unless (ots-available?)
+        (display "bb anchor: 'ots' CLI not found on PATH. Install opentimestamps-client.\n"
+                 (current-error-port))
+        (exit 1))
+      (let* ((ref (car arguments))
              (root (store-find-root (current-directory)))
-             (remotes (store-config-remotes root))
-             (remote-entry (assoc remote-name remotes)))
-        (unless remote-entry
-          (display "bb anchor: unknown remote '")
-          (display remote-name)
-          (display "'. Use 'bb remote add' first.\n" (current-error-port))
-          (exit 1))
-        (when (store-remote-entry-read-only? remote-entry)
-          (display "bb anchor: remote '")
-          (display remote-name)
-          (display "' is read-only\n" (current-error-port))
-          (exit 1))
-        (let* ((remote-path (store-remote-entry-path remote-entry))
-               (name-index (store-build-name-index root))
-               (count 0)
-               (proof-count 0))
-          ;; Ensure remote has combiners directory
-          (store-ensure-directory (store-path-join remote-path "combiners"))
-          ;; Copy each committed combiner
-          (for-each
-           (lambda (entry)
-             (let ((fhash (cdr entry)))
-               (when (store-has-committed-lineage? root fhash)
-                 (store-copy-combiner! root remote-path fhash)
-                 (set! proof-count (+ proof-count
-                                      (store-timestamp-combiner! root fhash)))
-                 (set! count (+ count 1))
-                 (display "  anchored: ")
-                 (display (car entry))
-                 (newline))))
-           name-index)
-          (display count)
-          (display " combiner(s) anchored to ")
-          (display remote-name)
-          (display ".\n")
-          (when (> proof-count 0)
-            (display proof-count)
-            (display " timestamp proof(s) created.\n"))))))
+             (name-index (store-build-name-index root)))
+        (let-values (((target-hash _l _m) (resolve-ref name-index root ref)))
+          (unless (store-has-committed-lineage? root target-hash)
+            (display "bb anchor: ref has no committed lineage. Run 'bb commit' first.\n"
+                     (current-error-port))
+            (exit 1))
+          (let ((tree-path (store-combiner-tree-path root target-hash))
+                (lineage-path (latest-committed-lineage-path root target-hash)))
+            (for-each
+             (lambda (path)
+               (when path
+                 (let ((status (anchor-artifact! path)))
+                   (display "  ")
+                   (display (case status
+                              ((already-anchored) "anchored ✓")
+                              ((upgraded)         "upgraded → confirmed ✓")
+                              ((anchored)         "anchored ✓ (confirmed immediately)")
+                              ((requested)        "requested (pending Bitcoin confirmation)")
+                              ((still-pending)    "still pending")
+                              ((stamp-failed)     "stamp failed")
+                              ((missing)          "artifact missing")
+                              (else               "?")))
+                   (display ": ")
+                   (display path)
+                   (newline))))
+             (list tree-path lineage-path)))))))
 
 
   ;; ================================================================
@@ -2691,7 +2940,8 @@
           (for-each
            (lambda (entry)
              (let ((fhash (cdr entry)))
-               (when (store-has-committed-lineage? root fhash)
+               (when (and (store-has-committed-lineage? root fhash)
+                          (store-is-published? root remote-name fhash))
                  (store-copy-combiner! root remote-path fhash)
                  (set! count (+ count 1))
                  (display "  pushed: ")
@@ -2775,7 +3025,8 @@
                    (for-each
                     (lambda (entry)
                       (let ((fhash (cdr entry)))
-                        (when (store-has-committed-lineage? root fhash)
+                        (when (and (store-has-committed-lineage? root fhash)
+                                   (store-is-published? root remote-name fhash))
                           (store-copy-combiner! root remote-path fhash)
                           (set! push-count (+ push-count 1))
                           (display "  pushed: ")
@@ -2792,7 +3043,7 @@
   (define command-remote
     (lambda (arguments)
       (when (null? arguments)
-        (display "bb remote: missing subcommand (add, remove, list, push, pull, sync)\n"
+        (display "bb remote: missing subcommand (add, remove, list, push, pull, sync, publish, stop)\n"
                  (current-error-port))
         (exit 1))
       (let ((root (store-find-root (current-directory)))
@@ -2805,6 +3056,8 @@
           [(push) (command-remote-push root rest)]
           [(pull) (command-remote-pull root rest)]
           [(sync) (command-remote-sync root)]
+          [(publish) (command-remote-publish root rest)]
+          [(stop) (command-remote-stop root rest)]
           [else
            (display "bb remote: unknown subcommand '")
            (display subcmd)
@@ -2853,34 +3106,39 @@
 
   (define command-mapping-delete
     (lambda (root rest)
-      (when (< (length rest) 2)
-        (display "bb mapping delete: usage: bb mapping delete <ref> <mapping-hash-prefix>\n"
+      (when (null? rest)
+        (display "bb mapping delete: usage: bb mapping delete <ref>\n"
+                 (current-error-port))
+        (display "  <ref> must identify a mapping (e.g. name@lang@mapHash or hash@mapHash)\n"
                  (current-error-port))
         (exit 1))
-      (let* ((name-index (store-build-name-index root))
-             (combiner-hash (let-values (((h l m) (resolve-ref name-index root (car rest)))) h))
-             (prefix (cadr rest))
-             (mappings (store-list-mappings root combiner-hash))
-             (matches (filter (lambda (entry)
-                                (and (>= (string-length (car entry)) (string-length prefix))
-                                     (string=? prefix
-                                               (substring (car entry) 0 (string-length prefix)))))
-                              mappings)))
-        (cond
-         ((null? matches)
-          (display "bb mapping delete: no mapping matching prefix '")
-          (display prefix) (display "'\n" (current-error-port))
-          (exit 1))
-         ((> (length matches) 1)
-          (display "bb mapping delete: ambiguous prefix '")
-          (display prefix) (display "' matches ")
-          (display (length matches)) (display " mappings\n" (current-error-port))
-          (exit 1))
-         (else
-          (let ((mapping-hash (caar matches)))
-            (store-delete-mapping! root combiner-hash mapping-hash)
-            (display "deleted mapping ") (display (substring mapping-hash 0 12))
-            (newline)))))))
+      (let* ((name-index (store-build-name-index root)))
+        (let-values (((combiner-hash _lang prefix) (resolve-ref name-index root (car rest))))
+          (unless prefix
+            (display "bb mapping delete: ref must include a mapping hash. Use 'bb mapping list <ref>' to see them.\n"
+                     (current-error-port))
+            (exit 1))
+          (let* ((mappings (store-list-mappings root combiner-hash))
+                 (matches (filter (lambda (entry)
+                                    (and (>= (string-length (car entry)) (string-length prefix))
+                                         (string=? prefix
+                                                   (substring (car entry) 0 (string-length prefix)))))
+                                  mappings)))
+            (cond
+             ((null? matches)
+              (display "bb mapping delete: no mapping matching prefix '")
+              (display prefix) (display "'\n" (current-error-port))
+              (exit 1))
+             ((> (length matches) 1)
+              (display "bb mapping delete: ambiguous prefix '")
+              (display prefix) (display "' matches ")
+              (display (length matches)) (display " mappings\n" (current-error-port))
+              (exit 1))
+             (else
+              (let ((mapping-hash (caar matches)))
+                (store-delete-mapping! root combiner-hash mapping-hash)
+                (display "deleted mapping ") (display (substring mapping-hash 0 12))
+                (newline)))))))))
 
   (define command-mapping-set
     (lambda (root rest)

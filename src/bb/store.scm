@@ -19,6 +19,10 @@
           store-mark-reviewed!
           store-is-reviewed?
           store-load-review
+          store-mark-published!
+          store-unmark-published!
+          store-is-published?
+          store-list-committed-files
           store-config-languages
           store-load-preferred-mapping
           store-config-remotes
@@ -775,6 +779,41 @@
             #f))))
 
   ;; ================================================================
+  ;; Visibility — published markers
+  ;; A combiner is private by default; bb publish writes a marker file.
+  ;; Push / sync only propagate combiners with a marker.
+  ;; ================================================================
+
+  (define store-mark-published!
+    (lambda (root remote-name function-hash author)
+      (let* ((timestamp (store-current-iso-timestamp))
+             (alist (list (cons 'combiner function-hash)
+                          (cons 'published-at timestamp)
+                          (cons 'publisher author)
+                          (cons 'remote remote-name)))
+             (content (sorted-alist->string alist))
+             (remote-directory (store-path-join root "published" remote-name))
+             (marker-path (store-path-join remote-directory
+                                           (string-append function-hash ".scm"))))
+        (store-ensure-directory remote-directory)
+        (call-with-output-file marker-path
+          (lambda (port) (display content port))
+          'replace))))
+
+  (define store-unmark-published!
+    (lambda (root remote-name function-hash)
+      (let ((marker-path (store-path-join root "published" remote-name
+                                          (string-append function-hash ".scm"))))
+        (when (file-exists? marker-path)
+          (delete-file marker-path)))))
+
+  (define store-is-published?
+    (lambda (root remote-name function-hash)
+      (let ((marker-path (store-path-join root "published" remote-name
+                                          (string-append function-hash ".scm"))))
+        (file-exists? marker-path))))
+
+  ;; ================================================================
   ;; Remote Configuration
   ;; ================================================================
 
@@ -832,14 +871,20 @@
          (lambda (entry)
            (let ((source-path (store-path-join source entry))
                  (destination-path (store-path-join destination entry)))
-             (if (file-directory? source-path)
-                 (store-copy-directory! source-path destination-path)
-                 (unless (file-exists? destination-path)
-                   (let ((content (call-with-port
-                                   (open-input-file source-path)
-                                   get-string-all)))
-                     (call-with-output-file destination-path
-                       (lambda (port) (display content port))))))))
+             (cond
+              ((file-directory? source-path)
+               (store-copy-directory! source-path destination-path))
+              ;; Wip lineage records are local-only; never propagate them.
+              ((store-string-suffix? ".wip.scm" entry))
+              ;; Pending OTS receipts are local-only; only confirmed .ots travels.
+              ((store-string-suffix? ".ots.pending" entry))
+              ((file-exists? destination-path))
+              (else
+               (let ((content (call-with-port
+                               (open-input-file source-path)
+                               get-string-all)))
+                 (call-with-output-file destination-path
+                   (lambda (port) (display content port))))))))
          (directory-list source)))))
 
   (define store-delete-directory!
