@@ -1455,39 +1455,66 @@
                  main-hashes)))))
         name-index)))
 
-  ;; Display check failures and prompt user for action.
-  ;; Returns symbol: discard, worklog, or re-edit.
-  (define edit-handle-failure
-    (lambda (results original-hash root)
-      (display "\nCheck failures:\n" (current-error-port))
-      (for-each
-       (lambda (result)
-         (unless (eq? #t (cdr result))
-           (display "  FAIL " (current-error-port))
-           (display (car result) (current-error-port))
-           (display ": " (current-error-port))
-           (display (cdr result) (current-error-port))
-           (display "\n" (current-error-port))))
-       results)
-      (display "\n(d)iscard, (w)orklog, or (r)e-edit? " (current-error-port))
+  ;; Read one line from the controlling TTY. bb's stdin is usually a pipe
+  ;; from the launcher script (echo ... | scheme), so (current-input-port)
+  ;; is at EOF by the time we prompt interactively.
+  (define edit-read-tty-line
+    (lambda ()
+      (guard (exn (#t #f))
+        (let* ((port (open-file-input-port "/dev/tty"
+                                           (file-options)
+                                           (buffer-mode line)
+                                           (native-transcoder)))
+               (line (get-line port)))
+          (close-port port)
+          (if (eof-object? line) #f line)))))
+
+  ;; Display an error message and prompt user for action.
+  ;; Returns symbol: re-edit or exit.
+  ;; source: full buffer contents at the time of failure, or #f if unavailable.
+  (define edit-prompt-on-error
+    (lambda (message original-hash root source)
+      (display "\nError: " (current-error-port))
+      (display message (current-error-port))
+      (display "\n" (current-error-port))
+      (display "\n(r)ewrite, (w)orklog, or (e)xit? " (current-error-port))
       (flush-output-port (current-error-port))
-      (let ((response (get-line (current-input-port))))
+      (let ((response (edit-read-tty-line)))
         (cond
-         ((or (eof-object? response)
-              (string=? response "d")
-              (string=? response "discard"))
-          'discard)
-         ((or (string=? response "w")
-              (string=? response "worklog"))
-          (when original-hash
-            (store-add-worklog-entry! root original-hash
-                                "edit failed checks"))
-          (display "Worklog entry added.\n")
-          'discard)
-         ((or (string=? response "r")
-              (string=? response "re-edit"))
+         ((and (string? response)
+               (or (string=? response "r")
+                   (string=? response "rewrite")))
           're-edit)
-         (else 'discard)))))
+         ((and (string? response)
+               (or (string=? response "w")
+                   (string=? response "worklog")))
+          (when original-hash
+            (let ((worklog-message
+                   (if (and (string? source) (positive? (string-length source)))
+                       (string-append "Error: " message "\n\nSource:\n" source)
+                       (string-append "Error: " message))))
+              (store-add-worklog-entry! root original-hash worklog-message))
+            (display "Worklog entry added.\n" (current-error-port)))
+          'exit)
+         (else 'exit)))))
+
+  ;; Re-open the editor and recurse into edit-save-flow on success.
+  (define edit-reopen
+    (lambda (root name-index lang original-hash editor tmp-file derived-from-hash)
+      (let ((status (system (string-append editor " " tmp-file " </dev/tty >/dev/tty"))))
+        (when (= status 0)
+          (let ((new-source
+                 (guard (exn (#t #f))
+                   (call-with-input-file tmp-file get-string-all))))
+            (if new-source
+                (edit-save-flow new-source root name-index lang
+                                original-hash editor tmp-file derived-from-hash)
+                (let ((action (edit-prompt-on-error
+                               "could not read file after editor exit"
+                               original-hash root #f)))
+                  (when (eq? action 're-edit)
+                    (edit-reopen root name-index lang original-hash
+                                 editor tmp-file derived-from-hash)))))))))
 
   ;; Full edit-save flow: parse, eval, run checks, store or handle failure.
   ;; Returns when done (possibly after re-edit loops).
@@ -1497,47 +1524,88 @@
     (lambda (source root name-index lang original-hash editor tmp-file . rest)
       (let* ((derived-from-hash (if (null? rest) original-hash (car rest)))
              (lang (or lang (guard (exn (#t "en"))
-                              (car (store-config-languages root)))))
-             (doc (source-extract-doc source))
-             (expressions (mobius-read-all-string source))
-             (environment (install-base-library (make-initial-environment)))
-             (environment (load-index-into-env name-index root environment))
-             (author (store-config-author root))
-             (name-lookup (make-name-lookup name-index root)))
-        (let-values (((main-defines check-defines) (classify-defines expressions)))
-          ;; Evaluate all forms
-          (let-values (((final-environment last-value)
-                        (mobius-eval-top-level expressions environment)))
-            (if (null? check-defines)
-                ;; No checks — store directly
-                (begin
-                  (edit-store-all! root name-index lang doc main-defines
-                                   check-defines name-lookup author derived-from-hash)
-                  (display "Done. Use 'bb commit' to finalize.\n"))
-                ;; Run checks
-                (let ((results (edit-run-checks check-defines main-defines final-environment)))
-                  (if (for-all (lambda (r) (eq? #t (cdr r))) results)
-                      ;; All passed
-                      (begin
-                        (for-each
-                         (lambda (r)
-                           (display "  PASS ")
-                           (display (car r))
-                           (display "\n"))
-                         results)
-                        (edit-store-all! root name-index lang doc main-defines
-                                         check-defines name-lookup author derived-from-hash)
-                        (display "Done. Use 'bb commit' to finalize.\n"))
-                      ;; Some failed
-                      (let ((action (edit-handle-failure results original-hash root)))
-                        (when (eq? action 're-edit)
-                          (let ((status (system (string-append editor " " tmp-file " </dev/tty >/dev/tty"))))
-                            (when (= status 0)
-                              (let ((new-source (call-with-input-file tmp-file
-                                                  get-string-all)))
-                                (edit-save-flow new-source root name-index lang
-                                                original-hash editor tmp-file
-                                                derived-from-hash))))))))))))))
+                              (car (store-config-languages root))))))
+        ;; Parse
+        (let ((parse-result
+               (guard (exn (#t (cons 'error
+                                     (if (message-condition? exn)
+                                         (condition-message exn)
+                                         "syntax error"))))
+                 (cons 'ok (mobius-read-all-string source)))))
+          (if (eq? (car parse-result) 'error)
+              (let ((action (edit-prompt-on-error (cdr parse-result) original-hash root source)))
+                (when (eq? action 're-edit)
+                  (edit-reopen root name-index lang original-hash
+                               editor tmp-file derived-from-hash)))
+              (let* ((expressions (cdr parse-result))
+                     (doc (source-extract-doc source))
+                     (environment (install-base-library (make-initial-environment)))
+                     (environment (load-index-into-env name-index root environment))
+                     (author (store-config-author root))
+                     (name-lookup (make-name-lookup name-index root)))
+                (let-values (((main-defines check-defines) (classify-defines expressions)))
+                  ;; Evaluate
+                  (let ((eval-result
+                         (guard (exn (#t (cons 'error
+                                               (if (message-condition? exn)
+                                                   (condition-message exn)
+                                                   "evaluation error"))))
+                           (let-values (((env val)
+                                         (mobius-eval-top-level expressions environment)))
+                             (cons 'ok (cons env val))))))
+                    (if (eq? (car eval-result) 'error)
+                        (let ((action (edit-prompt-on-error (cdr eval-result) original-hash root source)))
+                          (when (eq? action 're-edit)
+                            (edit-reopen root name-index lang original-hash
+                                         editor tmp-file derived-from-hash)))
+                        (let* ((final-environment (cadr eval-result))
+                               (try-store
+                                (lambda ()
+                                  (guard (exn (#t (cons 'error
+                                                        (if (message-condition? exn)
+                                                            (condition-message exn)
+                                                            "store error"))))
+                                    (edit-store-all! root name-index lang doc main-defines
+                                                     check-defines name-lookup author derived-from-hash)
+                                    'ok))))
+                          (if (null? check-defines)
+                              ;; No checks — store directly
+                              (let ((store-result (try-store)))
+                                (if (eq? store-result 'ok)
+                                    (display "Done. Use 'bb commit' to finalize.\n")
+                                    (let ((action (edit-prompt-on-error (cdr store-result) original-hash root source)))
+                                      (when (eq? action 're-edit)
+                                        (edit-reopen root name-index lang original-hash
+                                                     editor tmp-file derived-from-hash)))))
+                              ;; Run checks
+                              (let ((results (edit-run-checks check-defines main-defines final-environment)))
+                                (if (for-all (lambda (r) (eq? #t (cdr r))) results)
+                                    ;; All passed
+                                    (begin
+                                      (for-each
+                                       (lambda (r)
+                                         (display "  PASS ")
+                                         (display (car r))
+                                         (display "\n"))
+                                       results)
+                                      (let ((store-result (try-store)))
+                                        (if (eq? store-result 'ok)
+                                            (display "Done. Use 'bb commit' to finalize.\n")
+                                            (let ((action (edit-prompt-on-error (cdr store-result) original-hash root source)))
+                                              (when (eq? action 're-edit)
+                                                (edit-reopen root name-index lang original-hash
+                                                             editor tmp-file derived-from-hash))))))
+                                    ;; Some checks failed
+                                    (let ((msg (apply string-append
+                                                      (map (lambda (r)
+                                                             (if (eq? #t (cdr r)) ""
+                                                                 (string-append "FAIL " (symbol->string (car r))
+                                                                                ": " (cdr r) "\n")))
+                                                           results))))
+                                      (let ((action (edit-prompt-on-error msg original-hash root source)))
+                                        (when (eq? action 're-edit)
+                                          (edit-reopen root name-index lang original-hash
+                                                       editor tmp-file derived-from-hash)))))))))))))))))
 
   ;; ================================================================
   ;; bb edit — denormalize stored combiner to editable source
@@ -1653,9 +1721,18 @@
             ;; Open editor and run save flow
             (let ((status (system (string-append editor " " tmp-file " </dev/tty >/dev/tty"))))
               (when (= status 0)
-                (let ((source (call-with-input-file tmp-file get-string-all)))
-                  (edit-save-flow source root name-index lang hash
-                                  editor tmp-file derived-from-hash)))))))))
+                (let ((source
+                       (guard (exn (#t #f))
+                         (call-with-input-file tmp-file get-string-all))))
+                  (if source
+                      (edit-save-flow source root name-index lang hash
+                                      editor tmp-file derived-from-hash)
+                      (let ((action (edit-prompt-on-error
+                                     "could not read file after editor exit"
+                                     hash root #f)))
+                        (when (eq? action 're-edit)
+                          (edit-reopen root name-index lang hash
+                                       editor tmp-file derived-from-hash))))))))))))
 
   ;; ================================================================
   ;; bb commit — promote wip lineage to committed
