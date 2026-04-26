@@ -1814,60 +1814,88 @@
              (let ((entry (assoc name name-index)))
                (if entry
                    (let* ((fhash (cdr entry))
-                          ;; All wip records, sorted newest-first by 'created.
-                          ;; On timestamp ties (edit-store-all! writes a no-checks
-                          ;; record and then a with-checks record at the same
-                          ;; ISO-second), prefer the record with checks so we
-                          ;; don't promote the intermediate no-checks form.
+                          ;; All wip records sorted ascending by 'created.
+                          ;; Each distinct created timestamp is one user event;
+                          ;; within a single event edit-store-all! may write a
+                          ;; no-checks intermediate followed by a with-checks
+                          ;; final. We keep the with-checks variant when both
+                          ;; appear at the same timestamp.
                           (wip-files (store-list-wip-files root fhash))
-                          (wip-records-sorted
+                          (wip-records-asc
                            (sort (lambda (a b)
                                    (let ((ta (cdr (assq 'created a)))
                                          (tb (cdr (assq 'created b))))
                                      (cond
-                                      ((string>? ta tb) #t)
-                                      ((string>? tb ta) #f)
+                                      ((string<? ta tb) #t)
+                                      ((string<? tb ta) #f)
                                       (else
+                                       ;; with-checks before no-checks within tie,
+                                       ;; so the later "wins" filter prefers it.
                                        (and (assq 'checks a)
                                             (not (assq 'checks b)))))))
                                  (map (lambda (f) (load-lineage-record root fhash f))
                                       wip-files)))
-                          ;; "Add" records (have a relation other than retract-checks).
+                          (retract-records
+                           (filter (lambda (r)
+                                     (let ((rel (assq 'relation r)))
+                                       (and rel (string=? (cdr rel) "retract-checks"))))
+                                   wip-records-asc))
                           (add-records
                            (filter (lambda (r)
                                      (let ((rel (assq 'relation r)))
                                        (or (not rel)
                                            (not (string=? (cdr rel) "retract-checks")))))
-                                   wip-records-sorted))
-                          ;; Retraction records.
-                          (retract-records
-                           (filter (lambda (r)
-                                     (let ((rel (assq 'relation r)))
-                                       (and rel (string=? (cdr rel) "retract-checks"))))
-                                   wip-records-sorted))
-                          (latest-add (if (null? add-records) #f (car add-records)))
-                          (wip-derived (and latest-add
-                                            (let ((d (assq 'derived-from latest-add)))
-                                              (and d (cdr d)))))
-                          (wip-relation (and latest-add
-                                             (let ((r (assq 'relation latest-add)))
-                                               (and r (cdr r)))))
-                          (wip-checks (and latest-add
-                                           (let ((c (assq 'checks latest-add)))
-                                             (and c (cdr c)))))
-                          ;; Anchor the relation to a specific predecessor record:
-                          ;; the most recent committed lineage on the derived-from
-                          ;; combiner at this moment.
-                          (predecessor-lineage
-                           (and wip-derived
-                                (latest-committed-lineage-hash root wip-derived))))
-                     (store-record-lineage! root fhash author
-                                      (or wip-relation "commit")
-                                      wip-derived
-                                      #f
-                                      #f
-                                      wip-checks
-                                      predecessor-lineage)
+                                   wip-records-asc))
+                          ;; One representative per distinct 'created timestamp.
+                          ;; The last add seen at a given ts wins, which—given
+                          ;; the sort tie-break above—is the with-checks one.
+                          (add-representatives
+                           (let loop ((remaining add-records)
+                                      (last-ts #f)
+                                      (acc '()))
+                             (cond
+                              ((null? remaining) (reverse acc))
+                              (else
+                               (let* ((r (car remaining))
+                                      (ts (cdr (assq 'created r))))
+                                 (cond
+                                  ((and last-ts (string=? ts last-ts))
+                                   ;; Replace previous representative for this ts.
+                                   (loop (cdr remaining) ts (cons r (cdr acc))))
+                                  (else
+                                   (loop (cdr remaining) ts (cons r acc))))))))))
+                     ;; Promote each add event as its own committed lineage record.
+                     ;; A translate record with no 'checks field inherits the
+                     ;; checks list from the most recent prior committed record
+                     ;; on this combiner that carries one — translating a
+                     ;; mapping shouldn't silently drop checks.
+                     (for-each
+                      (lambda (rep)
+                        (let* ((wip-derived (let ((d (assq 'derived-from rep)))
+                                              (and d (cdr d))))
+                               (wip-relation (let ((r (assq 'relation rep)))
+                                               (and r (cdr r))))
+                               (rep-checks-cell (assq 'checks rep))
+                               (wip-checks
+                                (cond
+                                 (rep-checks-cell (cdr rep-checks-cell))
+                                 ((and wip-relation (string=? wip-relation "translate"))
+                                  (latest-committed-lineage-checks root fhash))
+                                 (else #f)))
+                               (predecessor-lineage
+                                (and wip-derived
+                                     (latest-committed-lineage-hash root wip-derived))))
+                          (store-record-lineage! root fhash author
+                                           (or wip-relation "commit")
+                                           wip-derived
+                                           #f
+                                           #f
+                                           (if (and (pair? wip-checks)
+                                                    (not (null? wip-checks)))
+                                               wip-checks
+                                               #f)
+                                           predecessor-lineage)))
+                      add-representatives)
                      ;; Carry retractions through as separate committed records.
                      (for-each
                       (lambda (r)
@@ -1876,10 +1904,16 @@
                             (store-record-retract-checks!
                              root fhash author (cdr retracted)))))
                       retract-records)
-                     (store-add-worklog-entry!
-                      root fhash
-                      (string-append "committed " name " ("
-                                     (or wip-relation "commit") ")"))
+                     (let ((latest-relation
+                            (cond
+                             ((null? add-representatives) "commit")
+                             (else
+                              (let ((r (assq 'relation (car (reverse add-representatives)))))
+                                (if r (cdr r) "commit"))))))
+                       (store-add-worklog-entry!
+                        root fhash
+                        (string-append "committed " name " ("
+                                       latest-relation ")")))
                      (set! count (+ count 1))
                      (display "  committed: ")
                      (display name)
