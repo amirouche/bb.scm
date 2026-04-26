@@ -1,0 +1,11 @@
+(define post-13-the-citizen-en
+  (lambda ()
+    (list-of
+      "13-the-citizen"
+      "The Citizen"
+      (list-of
+        "Tariq was not a programmer. He was a physician, and his relationship with the ship's software systems was the same relationship most people have with the systems they depend on: he trusted them the way you trust a bridge, by crossing it and observing that it held. This was a reasonable approach. It was also, the further the ship got from Earth, increasingly uncomfortable."
+        "The medical diagnostic system had been built from a base of clinical decision support software that Tariq had used on Earth. He knew what it felt like when it was working correctly. What he did not know — what he had never needed to know on Earth, where the vendor's support line was a phone call away — was why it worked correctly. On the ship, the vendor was eight light-minutes away and growing. By year two, they were twenty minutes. By year three, getting useful support from Earth required a ninety-minute round trip for a single message exchange."
+        "He went to Fatou. He said: 'I need to understand enough about the diagnostic system that I can maintain it.' Fatou said: 'Define maintain.' He said: 'I need to know when it's wrong and I need to be able to tell someone why.' She showed him the check suite. She showed him how to read a combiner's lineage. She did not show him how to write a combiner, because that was not what he had asked for."
+        "Over six months, Tariq learned to read the diagnostic system's checks the way a careful doctor reads a lab report: not as raw data, but as a pattern of confirmations and exceptions. He could not write new checks. He could read the existing ones and understand what they verified. When a check failed, he knew what category of correctness had been violated, even if he could not fix the violation himself."
+        "He wrote a guide for other non-programmer crew members called 'Reading the Store Without Writing It.' It was seven pages long. Fatou added it to the store. Its hash appeared in the lineage of three later documents written by crew members in other disciplines who had learned the same skill from reading it. Tariq did not think of this as programming. He thought of it as literacy. He was not wrong."))))

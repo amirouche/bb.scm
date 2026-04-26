@@ -1,0 +1,11 @@
+(define post-06-el-teorico-es
+  (lambda ()
+    (list-of
+      "06-el-teorico"
+      "El Teórico de Lenguajes"
+      (list-of
+        "El profesor Sáenz había publicado extensamente sobre las bases mínimas para lenguajes de programación. Su opinión, sostenida desde su tesis doctoral, era que la mayoría de los lenguajes de programación tenían demasiadas primitivas y que la proliferación de formas integradas era una categoría de pecado original del que sufrían las generaciones sucesivas de programadores. Vino a la Bodega por tres semanas como revisor externo y se quedó siete meses."
+        "Su objeción principal al diseño del almacén era el número de primitivas. Las contó, las anotó en un cuaderno y presentó su análisis en la reunión técnica semanal: catorce primitivas era demasiado. El mismo poder expresivo podía lograrse con cinco, quizás cuatro, si gamma era suficientemente general. Tenía un borrador de prueba."
+        "El contraargumento vino de Yusuf, que señaló que cualquier conjunto de primitivas podía reducirse a un conjunto más pequeño si se estaba dispuesto a aceptar una evaluación imprácticamente lenta. El profesor convino en que eso era técnicamente cierto. Dijo que la minimalidad teórica y la utilidad práctica eran objetivos de optimización diferentes y que confundirlos era pensamiento descuidado. Yusuf dijo que 'pensamiento descuidado' era una frase fuerte para usar sobre personas que habían entregado software funcional."
+        "Debatieron productivamente durante seis semanas. El resultado fue un documento formal: una prueba de que el conjunto de primitivas era mínimo dado que las operaciones comunes debían ser evaluables en tiempo polinomial. El profesor figuraba como autor principal. Yusuf figuraba como coautor. El documento fue añadido al linaje del almacén como derivación de la especificación de fundación original."
+        "Lo que más sorprendió al profesor no fue el sistema sino los diarios de trabajo. Leyendo el razonamiento registrado junto a cada decisión sobre una primitiva, encontró argumentos que había formulado en artículos publicados, de forma independiente, años antes. Los leyó con detenimiento. Escribió en el margen de su cuaderno: 'También lo encontraron.' No lo dijo en voz alta. Añadió su propia clave al registro de autores y confirmó sus notas en el almacén."))))

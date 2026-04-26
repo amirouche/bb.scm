@@ -1,0 +1,11 @@
+(define post-24-the-steward-en
+  (lambda ()
+    (list-of
+      "24-the-steward"
+      "The Community Steward"
+      (list-of
+        "Noa had been the store's de facto community manager for three years when the silence fell. This was not a role that had been designed into the mission; it had grown up around the fact that Noa was the person who noticed when people were having trouble with the store and helped them without being asked. She had a gift for identifying the moment when someone was about to give up on registering a combiner because the tooling felt unfamiliar, and appearing at that moment with a quiet offer to help."
+        "After the silence, she proposed something she had been thinking about for a year: adding a new surface language to the store. Not a language spoken by any current crew member. A language that had been constructed, collectively, on the ship — a lingua franca that had emerged from the particular mix of eighteen linguistic backgrounds aboard and that served as a neutral medium for crew communications when no one's first language was dominant."
+        "The language did not have a name. That was the first thing Noa asked the crew to decide. The naming process took three weeks and produced, by consensus, a name that was a portmanteau of words from seven of the eighteen represented languages, meaning roughly 'the path we are making together.' The name was unpronounceable to most linguists on Earth. It was used fluently by every crew member within a month."
+        "She registered the first ten combiners in the new language. These were the base library: the core operations that any programmer on the ship would need to know. She worked with Amara on the phonology and with Lylia on the formal name-registration process. The store accepted the new language without modification — it had always been designed to accommodate arbitrary surface mappings. The first combiner registered in the crew's language resolved to the same hash as its English counterpart."
+        "The language had no speakers on Earth. The store did not care. The hash was the same hash it had always been. The name was new. That was the whole point: the name was theirs, made by them, for their use, in the only community that knew how to say it."))))

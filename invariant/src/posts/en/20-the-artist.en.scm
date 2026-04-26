@@ -1,0 +1,11 @@
+(define post-20-the-artist-en
+  (lambda ()
+    (list-of
+      "20-the-artist"
+      "The Artist"
+      (list-of
+        "Keiko's official role was systems illustrator, a position that had not existed before the mission and which the crew had invented because someone needed to produce technical diagrams and the engineers all agreed that their own diagrams were, in Yusuf's words, 'honest but upsetting.' She arrived with a background in data visualization and a private practice in generative art that had nothing to do with space travel."
+        "She spent her first six months on the ship producing the diagrams everyone asked her for: dependency graphs, system architecture maps, lineage visualizations for the store's combiner chains. She was good at this in the specific way that people are good at things that engage one part of their attention while leaving the rest available for other problems."
+        "The other problem she was working on was the question of what a combiner looked like as an image. Not a diagram — not an illustration of its relationships — but a direct visual encoding of its content. She spent three months developing a mapping: the de Bruijn tree structure became a branching path; the depth of each branch encoded the combiner's recursive complexity; the leaf nodes were colored by their type signature. The resulting images were not beautiful in any conventional sense. They were distinctive. Two combiners with similar but non-identical structure produced visibly similar but non-identical images. Two combiners with the same hash produced the same image."
+        "She called them 'hash portraits.' The crew began using them as visual checksums — a quick glance at a portrait could confirm that a combiner had not changed. This was not rigorous. The actual check was the hash. But the portraits were useful in the way that mnemonics are useful: not as a substitute for correctness but as an aid to memory."
+        "She added a hash portrait generator to the store as a combiner. Its own portrait — the image of the combiner that generated images — was one of the most complex the system could produce, dense and branching. She printed it and hung it by her workstation. When new crew members asked what it was, she said: 'It's a picture of itself making pictures.' They found this confusing. She thought that was appropriate."))))

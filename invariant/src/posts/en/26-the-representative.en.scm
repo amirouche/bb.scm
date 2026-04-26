@@ -1,0 +1,11 @@
+(define post-26-the-representative-en
+  (lambda ()
+    (list-of
+      "26-the-representative"
+      "The Representative"
+      (list-of
+        "The governance question had been latent since departure. The mission had launched under a framework designed for a crew that would receive guidance from Earth — updates to the mission protocol, decisions on resource allocation, arbitration of disputes that the crew could not resolve internally. When Earth went quiet, the framework had a gap at its center where the authority had been."
+        "The crew did not fill the gap immediately. For the first year of the silence, they operated on the pre-silence framework by inertia, making small decisions locally and deferring the larger ones. The large decisions accumulated. By year two of the silence, the deferral list was long enough that Fatou called a crew assembly to address it."
+        "The assembly decided, after two days of discussion, that the store would function as the mission's institutional memory for governance decisions, the same way it functioned as institutional memory for technical decisions. A governance decision would be proposed as a natural-language document, discussed via worklog entries attached to that document, and ratified by attestation — a threshold number of crew members signing the document with their author keys."
+        "The first person to propose a governance document was a structural engineer named Gabriel, who represented, informally, a crew faction that was concerned about resource allocation for the growing research program versus the maintenance workload. His proposal was careful, specific, and well-sourced from the existing mission protocol documents in the store. The discussion it generated produced eighteen worklog entries over five days."
+        "The ratified document was registered in the store with all attestation hashes. It was not binding in the legal sense that Earth-side documents were binding. It was binding in the way that everything in the store was binding: it existed, it was timestamped, it was signed, and it could be read by anyone. Future decisions cited it as a precedent, the way technical combiners cited their ancestor combiners. The store was not a law. But it was a record of what the crew had agreed to, in the order they had agreed to it, and that turned out to be enough."))))

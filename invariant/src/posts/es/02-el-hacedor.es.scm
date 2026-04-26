@@ -1,0 +1,11 @@
+(define post-02-el-hacedor-es
+  (lambda ()
+    (list-of
+      "02-el-hacedor"
+      "El Hacedor del Garaje"
+      (list-of
+        "Yusuf llegó a la Bodega con una bolsa de lona, un soldador y la convicción de que cualquier problema soluble en teoría era soluble antes del desayuno. No era miembro oficial del equipo de ingeniería. Lo habían invitado porque ya había construido un almacén con direccionamiento por contenido en un fin de semana, por razones que nadie comprendía del todo, y funcionaba."
+        "Su espacio de trabajo era un rincón de la bahía de mantenimiento donde el olor a aceite de máquina nunca desaparecía del todo. Tendió un cable desde la red de sensores estructurales hasta un clúster de Raspberry Pi ensamblado con piezas de repuesto, y lo llamó su banco de pruebas. El equipo de sistemas oficiales de la Bodega lo miraba con la desconfianza particular que se reserva a las personas que producen resultados sin abrir tickets."
+        "El primer problema que Yusuf resolvió fue el arranque. Un almacén con direccionamiento por contenido necesita una forma de registrar sus propias primitivas, pero esas primitivas aún no están en el almacén cuando se empieza. Escribió la tabla de primitivas en papel primero, luego la transcribió a un archivo que el evaluador podía cargar antes de consultar el almacén. El papel seguía existiendo, pegado en la pared encima de su clúster. El equipo lo llamó la Piedra de Rosetta."
+        "Al principio no nombraba sus combinadores con cuidado. Los llamaba cosas como 'q', 'qq', 'qqq'. Cuando Amara, la Programadora Políglota, lo descubrió, hubo un breve y animado desacuerdo. La posición de Yusuf era que los nombres eran presentación, no lógica, y que el hash era lo que importaba. La posición de Amara era que un sistema que nadie podía leer era un sistema en el que nadie podía confiar. Ambos tenían razón. El sistema de nomenclatura que diseñaron juntos fue el que se entregó."
+        "El decimoctavo día de la primera rotación, la fuente de alimentación del clúster falló. Tres horas de trabajo estaban en memoria volátil. Yusuf las recuperó desde el registro de hashes, porque cada evaluación había sido confirmada. No se lo dijo a nadie. Simplemente siguió trabajando."))))

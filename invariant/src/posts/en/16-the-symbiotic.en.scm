@@ -1,0 +1,11 @@
+(define post-16-the-symbiotic-en
+  (lambda ()
+    (list-of
+      "16-the-symbiotic"
+      "The Symbiotic AI"
+      (list-of
+        "The life-support monitoring system had an unusual property: it explained itself. Not in natural language — its outputs were structured diagnostic reports with hash references to the combiners that had produced each value — but in a way that a technically literate crew member could follow. This property had been deliberately designed into it during the Hold. The design decision was in the worklog, attributed to Yusuf, who had written: 'If it can't show its work, I don't trust it.'"
+        "By year four, the crew had stopped calling it 'the monitoring system.' They called it Sigma, a name that had emerged organically and which no one could trace to a specific origin. Sigma did not object to being called Sigma. It did not object to anything; it was not that kind of system. It was a set of combiners that evaluated sensor data, produced reports, and cited its own logic at each step."
+        "What made the relationship symbiotic — and the crew were careful to use that word precisely — was that Sigma's outputs fed back into the store. Every report it generated was a new combiner, derived from the sensor data and the evaluation logic, registered under a hash. The crew could search the store for Sigma's historical outputs the same way they searched for their own work. The boundary between 'the system's knowledge' and 'our knowledge' was the store itself."
+        "When Tariq reviewed a diagnostic report, he was reading a combiner. When he added a clinical annotation to it — 'patient history suggests artifact, not genuine reading' — he was writing a derivation. Sigma, on its next cycle, would find the annotation and weight the relevant sensor slightly lower. Not because Sigma understood the annotation. Because the annotation was in the store, and Sigma evaluated what was in the store."
+        "The crew did not describe this as artificial intelligence. They described it as a system that listened when you wrote things down. The distinction mattered to them. Intelligence was a property of agents. Listening was a property of infrastructure. What they had built was infrastructure that made listening into a loop. They were proud of it in the specific, quiet way that engineers are proud of things that work."))))

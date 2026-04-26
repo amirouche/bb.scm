@@ -1,0 +1,11 @@
+(define post-14-the-educator-en
+  (lambda ()
+    (list-of
+      "14-the-educator"
+      "The Educator"
+      (list-of
+        "Chen had been teaching programming for fifteen years before the mission. He had taught in universities, in bootcamps, in an online platform that reached half a million students and paid him a percentage he found embarrassing to think about. He had learned, over those years, that the hardest thing to teach was not syntax or algorithms but the moment when a learner first has a thought that their tools can express."
+        "On the ship, he taught one student at a time, because the crew complement did not permit cohorts. His first student after departure was a materials engineer named Pita, who wanted to write combiners for stress analysis. Pita had a background in finite element modeling and a strong intuitive sense of mathematical structure. What she did not have was a way to think about named, hashable, multilingual logic — the specific model the store used."
+        "Chen did not start with the store. He started with the mathematics Pita already knew. He showed her that a gamma clause was a pattern match over an inductive data type, which was something she understood in the context of mesh structures. She said: 'So the gamma is the recursion rule, and the base case is the pattern that doesn't recurse.' He said that was exactly right. She wrote her first gamma correctly twenty minutes later."
+        "The lesson he added to the store was the lesson itself — not the transcript, but the pedagogical structure: the sequence of concepts, the example that made the connection, the phrase that had worked. He wrote it as a natural-language document and registered it as a derivation from a general pedagogy document that Marcus had written in the Hold, which had itself derived from Tariq's guide."
+        "A year later, a crew member he had not taught — a hydroponics specialist named Emeka, who had read the lesson document in the store — came to him and said she had taught herself from it. She showed him the combiners she had written. They were correct. He forked the lesson document to add a note: 'Confirmed self-teachable. 2nd instance.' He was very pleased about this."))))

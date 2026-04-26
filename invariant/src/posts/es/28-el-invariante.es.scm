@@ -1,0 +1,11 @@
+(define post-28-el-invariante-es
+  (lambda ()
+    (list-of
+      "28-el-invariante"
+      "El Invariante"
+      (list-of
+        "¿Qué necesita un sistema que sea verdad, siempre, independientemente de lo que le ocurra? Esta era la pregunta que Fatou planteó a la tripulación en la reunión técnica anual del año nueve del viaje. Llevaban dos años en el silencio. La reunión tenía la calidad particular de las reuniones celebradas por personas que han aceptado que su situación es permanente hasta prueba en contrario."
+        "Las respuestas llegaron lentamente, una a una, y Fatou las escribió en un combinador de documento que todos podían ver en la pantalla de la sala común. La estructura de solo adición del almacén: lo que se añade no puede eliminarse, solo ser superado por derivación. El hash como identidad: la cosa es la misma que era si y solo si el hash coincide. El diario de trabajo como continuidad: nada se pierde que haya sido confirmado, incluso si el proceso que lo produjo ha desaparecido."
+        "Rania añadió una que sorprendió a la sala: 'Una verificación correcta que pasa hoy pasará mañana en el mismo combinador.' Nadie lo había enunciado explícitamente antes. Se seguía de la inmutabilidad de los hashes — un combinador con un hash dado siempre produciría la misma salida para la misma entrada, por lo que una verificación que probara una salida específica para una entrada específica siempre daría el mismo resultado en ese combinador. No era una propiedad para la que hubieran diseñado el sistema. Era una consecuencia de lo que habían diseñado."
+        "La lista creció hasta nueve elementos. Fatou añadió un décimo: 'El almacén está presente donde está desplegado. La inaccesibilidad de la Tierra no hace el almacén menos presente.' Lo leyó en voz alta. La sala guardó silencio por un momento. Luego Chen dijo: 'Por eso lo llamamos invariante.' Alguien más dijo: '¿Por eso lo llamamos así?' Chen dijo que lo creía. Nadie estaba seguro."
+        "El documento se tituló 'El Invariante' y fue registrado en el almacén. Fue el documento más leído en el almacén del barco para el resto del viaje. Cada tripulante que se unió después del año nueve lo leyó primero, como introducción, antes de leer cualquier otra cosa. Les decía lo que era verdad, siempre. Era suficiente para empezar."))))

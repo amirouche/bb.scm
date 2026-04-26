@@ -1,0 +1,11 @@
+(define post-04-el-veterano-es
+  (lambda ()
+    (list-of
+      "04-el-veterano"
+      "El Veterano Agotado"
+      (list-of
+        "Marcus llevaba veintitrés años desarrollando software. Había sobrevivido a cuatro reorganizaciones, dos adquisiciones, una migración de servidores locales a la nube que tardó tres años y no produjo ninguna mejora perceptible, y un incidente de sistemas distribuidos del que aún pensaba en mitad de la noche. Vino a la Bodega porque, en sus propias palabras, estaba intentando una cosa más antes de dejar de intentar cosas."
+        "Pasó su primera semana leyendo los documentos de diseño del almacén sin hacer ningún comentario. Eso ponía nerviosos a los ingenieros junior. El octavo día dijo, durante una sesión de revisión: 'Quiero saber qué no hay aquí.' La sala quedó en silencio. Aclaró: 'Cada sistema que he visto tiene algo que falta en el centro que todos pretenden que no falta. Quiero saber sobre qué está fingiendo este.'"
+        "Lo que faltaba en el almacén, tal como estaba diseñado, era una forma de expresar que algo había sido deliberadamente omitido. Se podía añadir. Se podía derivar. Se podía retirar mediante derivación. Pero no existía ninguna primitiva para 'esto está fuera del alcance por diseño'. Marcus pasó una semana argumentando que eso era una característica, no una laguna. Perdió el debate, pero la discusión produjo el sistema de atestación — una forma de registrar que un revisor había examinado un combinador y había elegido no extenderlo, por razones ahora consignadas en el diario de trabajo."
+        "Fue la primera persona en marcar un combinador como revisado y añadir una nota que decía: 'No me gusta esto, pero es el compromiso correcto.' La nota no estaba en el hash. El hash era la lógica. La nota estaba en el diario de trabajo, con marca de tiempo, atribuida a su clave de autor. Veinte años después, un tripulante en un barco que él nunca abordaría leería esa nota y entendería por qué una decisión de diseño que parecía incorrecta a primera vista era en realidad la correcta."
+        "Marcus se quedó dos rotaciones. Dijo que la Bodega era el primer entorno en el que había trabajado donde la ausencia de una característica era una posición documentada en lugar de una suposición no documentada. Lo dijo como un cumplido. Lo era."))))

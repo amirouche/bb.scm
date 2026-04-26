@@ -1,0 +1,11 @@
+(define post-17-the-anchor-backlog-en
+  (lambda ()
+    (list-of
+      "17-the-anchor-backlog"
+      "The Anchor Backlog"
+      (list-of
+        "Open Timestamp Server anchoring worked by submitting a hash to a public ledger maintained on Earth and receiving a proof that the hash existed at a specific moment in time. The proof was cryptographic: anyone with the ledger could verify that the hash had been submitted before a certain block, and therefore that the content addressed by the hash had existed before that block."
+        "For the first two years of the voyage, the crew submitted hashes to the Earth ledger and received proofs within an hour. The round-trip light delay was small enough that the process was nearly invisible. By year three, the delay was forty minutes each way. A hash submission took eighty minutes to yield a proof. The crew adapted by batching submissions: once a week, Fatou collected all new hashes, submitted them in a single batch, and retrieved the proofs on the next cycle."
+        "By year five, the delay was over two hours each way. The backlog of unanchored hashes — combiners registered since the last successful batch — sometimes stretched to three hundred entries. The proofs still arrived. But the gap between 'this combiner exists' and 'this combiner is provably timestamped' had grown to five hours on a good day and twelve hours when the antenna was realigned for a course correction."
+        "Lylia built an interim solution: a local anchoring chain. The ship maintained its own hash chain, each block containing a set of combiner hashes and a link to the previous block. The chain was not Earth-verified, but it was internally consistent. When Earth proofs arrived, Lylia's code inserted them into the chain at the appropriate block, retroactively anchoring the local records to external time."
+        "The backlog never fully cleared. This was not a failure. The proof that a combiner existed was in the hash. The proof that it had been created before a specific moment was in the anchor chain, even if that moment was 'before block N of our local chain, which was anchored to Earth time at block M.' It was enough. It was more than most systems on Earth could say about their own history."))))

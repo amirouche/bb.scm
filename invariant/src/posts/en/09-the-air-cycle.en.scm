@@ -1,0 +1,11 @@
+(define post-09-the-air-cycle-en
+  (lambda ()
+    (list-of
+      "09-the-air-cycle"
+      "The Air Cycle"
+      (list-of
+        "The bug was in the nitrogen balance routine. It had been there for eleven months, dormant, waiting for a specific combination of atmospheric sensor readings that only occurred when the recycling system ran its monthly deep-flush cycle at the same time as the greenhouse ventilation test. When those two events coincided, the nitrogen balance routine produced a value two orders of magnitude below the correct one. The routine then flagged a false atmospheric emergency."
+        "No one found the bug by reading the code. The code had been reviewed twice and looked correct to both reviewers. The nitrogen balance formula was right. The unit conversion was right. The edge case — the specific interaction between the two concurrent cycles — was not a condition anyone had thought to check for, because it required knowing that both cycles existed and that they could coincide."
+        "The check suite found it. Fatou had added a check for the nitrogen balance routine that ran a tabulated set of inputs against expected outputs. The table included several values from the deep-flush scenario, not because anyone had predicted the bug, but because Fatou had asked the environmental systems team to give her a list of 'unusual but valid' input combinations, and they had included it without knowing why she wanted it."
+        "When the check failed during a routine suite run, it produced a hash mismatch on the output value. Fatou brought it to the environmental systems team. The team found the bug in forty minutes. The fix was three lines. The fixed routine was committed as a new hash, with a lineage edge to the original and a worklog entry that described the discovery path in full."
+        "The entry ended: 'Found by check, not by review. The check was written before we knew what it was checking for. This is what checks are for.' The sentence was later quoted in Dr. Osei's second memo, which he wrote from Earth after receiving a copy of the worklog. He called it an example of knowledge structure producing knowledge retrieval. The crew called it good luck, which was also correct."))))

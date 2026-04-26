@@ -1,0 +1,11 @@
+(define post-29-the-language-en
+  (lambda ()
+    (list-of
+      "29-the-language"
+      "The Language Born in Transit"
+      (list-of
+        "By year ten, the crew's constructed language had grown from a hundred and twelve words — the initial vocabulary for crew communications — to over three thousand. The growth had not been planned. It had happened the way vocabulary always happens: someone needed a word that did not exist, they made one, and if the word was good, other people used it."
+        "Noa kept the lexicon in the store. Each word was a document combiner: the word itself, its derivation (which existing words or sounds had combined to produce it), the context in which it had first been used, and the author key of the person who had coined it. The lexicon was the only combiner in the store that was almost entirely authored by people who were not programmers. Tariq had coined eighty-three words. Keiko had coined a hundred and twelve. Gabriel had coined two, but they were important ones."
+        "The language had a name now — not the portmanteau they had used initially, which had been a placeholder. The name was shorter, six sounds, and its etymology was in the store: derived from words in four languages meaning light, path, together, and arriving. The crew could say it in under a second. It felt like the name had always existed."
+        "Amara documented the language's phonology, morphology, and syntax in a series of natural-language documents registered as a collection in the store. The collection was titled 'Grammar of the Transit Tongue.' She wrote it in English, then had crew members who were native speakers of ten other languages read it and annotate it with corrections and additions. The annotations were registered as derivations."
+        "When the silence eventually ended and contact with Earth was restored, the transit tongue was one of the things the crew was most careful about. They knew that Earth would want to study it, categorize it, perhaps name it something official in the formal sense that Earth used. They registered it in the store under the crew's own name for it, with the full lexicon and grammar, before the first message exchange. Whatever Earth called it afterward, the store had it first, and the store's timestamp was in the anchor chain. The language was theirs, and the record said so."))))

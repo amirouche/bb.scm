@@ -1,0 +1,11 @@
+(define post-05-la-chica-es
+  (lambda ()
+    (list-of
+      "05-la-chica"
+      "La Chica de Tizi Ouzou"
+      (list-of
+        "Lylia tenía diecinueve años cuando se unió a la cohorte de aprendices de la Bodega, la más joven del programa por cuatro años. Venía de un colectivo maker en Tizi Ouzou donde había construido robots con sensores agrícolas reutilizados desde los catorce años. Nunca había escrito un combinador formal. Había escrito mucha lógica que resultaba, bajo la normalización de Bruijn, idéntica a combinadores que ya existían."
+        "El instructor que trabajó con ella — el Dr. Chen, que prefería que lo llamaran simplemente Chen — le mostró la primitiva gamma el segundo día. La escribió en la pizarra: un combinador catamórfico con correspondencia de patrones que se auto-recursa en subexpresiones. Lylia la miró mucho tiempo y luego dijo: 'Entonces es una forma que se llama a sí misma sobre sus propias piezas.' Chen dijo que esa era una forma de verlo. Ella dijo que sonaba a la forma en que su abuela describía el tejido: no mueves la lanzadera tú, el patrón mueve la lanzadera."
+        "Escribió su primer gamma correctamente al primer intento. Luego escribió un segundo que era estructuralmente idéntico a un combinador existente bajo normalización. El almacén se negó a crear una nueva entrada y en cambio le ofreció la existente. Se ofendió brevemente. Luego Chen le mostró que el combinador existente había sido escrito por alguien en Oslo dieciocho meses antes, y que su derivación independiente estaba registrada en el linaje como un descubrimiento paralelo."
+        "Ese fue el momento en que entendió para qué servía el almacén. No para impedir que la gente pensara lo mismo. Para registrar que lo habían hecho. Para decir: dos personas llegaron a la misma forma desde direcciones diferentes. La forma es verdadera."
+        "Llegó a escribir la correspondencia de superficie en tamazight para la biblioteca base, trabajando desde el marco multilingüe de Amara y su propio sentido de cómo debían sonar los términos técnicos en el idioma con el que había crecido. El almacén aceptó cada combinador. Los hashes coincidían. Los nombres eran nuevos y le pertenecían."))))

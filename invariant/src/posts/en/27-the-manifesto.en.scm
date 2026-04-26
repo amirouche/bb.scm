@@ -1,0 +1,11 @@
+(define post-27-the-manifesto-en
+  (lambda ()
+    (list-of
+      "27-the-manifesto"
+      "The Manifesto"
+      (list-of
+        "Dr. Osei's second book arrived in the last message batch before the silence: a dense PDF, 340 pages, sent by his publisher at his request with the note 'in case you have time to read it out there.' The crew had time. The book was read, in sections, by almost everyone aboard, and the discussion it generated ran for months in the crew's public channels, which were themselves stored as document combiners in the store."
+        "The chapter that generated the most discussion was titled 'Against Incidental Architecture.' Its argument was this: every long-lived software system accumulated what Osei called incidental architecture — structure that had not been designed but had grown up around the contingencies of development history. Incidental architecture was not necessarily bad; sometimes it captured genuine domain knowledge that had never been made explicit. But it was fragile, because no one understood why it existed, and it was expensive to change, because changing it required reconstructing the reasoning that had produced it."
+        "The store, Osei argued, was an attempt to make all architecture explicit — not by preventing incidental growth, but by recording the derivation chain that produced every structure. A crew member reading the store's lineage graph could, in principle, trace any combiner back to the original decision that had necessitated it. The architecture was not incidental; it was documented contingency."
+        "Yusuf wrote a response in the public channel. It was short: 'This is what Fatou's check suite was for. The check is the explicit statement of intent. The hash is the proof that the code matches the intent. The worklog is the story of how we got there.' He added: 'I should have written this in the Hold. I didn't know how to say it then.'"
+        "The response was added to the store as a worklog entry on a document combiner that pointed to both the chapter and Yusuf's note. The document combiner's name, in the crew's constructed language, translated as 'the conversation between the book and the work.' No one on Earth could read that name. The crew could. They had made it."))))
