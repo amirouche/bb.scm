@@ -9,6 +9,8 @@ generated entirely with `bb` and Möbius — the meta-story of the blog
 The personas of `MANUAL.md` are recurring characters. The store is the
 infrastructure of the fiction.
 
+**Deployed at [https://hyper.dev/mobius/the-invariant/](https://hyper.dev/mobius/the-invariant/)**
+
 ## Structure
 
 ```
