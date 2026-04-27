@@ -618,6 +618,18 @@
       (let* ((body (store-load-combiner root function-hash))
              (map-data (store-load-preferred-mapping root function-hash))
              (mapping (cdr (assq 'mapping map-data)))
+             ;; When the name for this hash is qualified (collision), update the
+             ;; self-name entry (index 0) in the mapping so denormalized recursive
+             ;; calls use the qualified name that is actually bound in the environment.
+             (mapping (let ((qualified-self (hash->name function-hash)))
+                        (if (and qualified-self
+                                 (let ((entry (assv 0 mapping)))
+                                   (and entry
+                                        (not (string=? (symbol->string qualified-self)
+                                                       (cdr entry))))))
+                            (cons (cons 0 (symbol->string qualified-self))
+                                  (filter (lambda (e) (not (= (car e) 0))) mapping))
+                            mapping)))
              (surface (denormalize-tree body mapping hash->name)))
         (mobius-eval surface environment))))
 
