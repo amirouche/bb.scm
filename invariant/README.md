@@ -6,8 +6,8 @@ on a deep-space mission where Earth is unreachable. Written and
 generated entirely with `bb` and Möbius — the meta-story of the blog
 *is* the project.
 
-The personas of `MANUAL.md` are recurring characters. The store is the
-infrastructure of the fiction.
+The personas of [`manual.md`](https://github.com/amirouche/mobius) are
+recurring characters. The store is the infrastructure of the fiction.
 
 **Deployed at [https://hyper.dev/mobius/the-invariant/](https://hyper.dev/mobius/the-invariant/)**
 
