@@ -89,3 +89,27 @@ index.
 update the name index. The new hash is registered under the same name, creating
 an ambiguity that resolves by alphabet. Explicitly delete old name mappings
 when updating a load-bearing combiner across a regeneration cycle.
+
+## Phase 2 addendum — bb commit --all timestamp ties
+
+`bb commit --all` assigns the same ISO timestamp to every combiner committed in
+that batch. When `resolve-name-to-hash` breaks ties between same-name,
+same-language, same-timestamp mappings it falls back to alphabetical hash order.
+If an older hash sorts before a newer one, the old combiner wins — even if the
+new one was added in the same batch.
+
+**Observed:** After rebuilding the render pipeline (new `render-page` calling
+`site-base`), `generate` continued to resolve to an old hash because
+`bb commit --all` created a timestamp tie and the old hash was alphabetically
+smaller.
+
+**Fix applied:** `bb refactor <root> <old-dep-hash> <new-dep-hash>` rewires
+dependencies by hash directly, bypassing name resolution. Each `refactor` is
+committed individually and therefore gets a strictly later timestamp, winning
+future collisions. The refactor chain replaces `generate-posts`, `generate-index`,
+and `generate` in sequence.
+
+**Preferred workflow for store rebuilds:** Clear `combiners/` and re-run
+`bb-add-all.sh` from scratch. With only one version of each combiner in the
+store there are no collisions, no alphabetical tie-breaking, and no stale
+residue. `bb-add-all.sh` is idempotent against an empty store.
