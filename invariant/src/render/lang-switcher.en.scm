@@ -5,7 +5,7 @@
     (str-concat
      (list-of
       "<nav class=\"langs\">"
-      "<a href=\"/en/index.html\">English</a>"
-      "<a href=\"/fr/index.html\">français</a>"
-      "<a href=\"/es/index.html\">español</a>"
+      "<a href=\"" (site-base) "/en/index.html\">English</a>"
+      "<a href=\"" (site-base) "/fr/index.html\">français</a>"
+      "<a href=\"" (site-base) "/es/index.html\">español</a>"
       "</nav>\n"))))

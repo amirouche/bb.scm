@@ -5,6 +5,6 @@
   (lambda (lang post)
     (str-concat
      (list-of
-      "<li><a href=\"/" lang "/" (post-slug post) ".html\">"
+      "<li><a href=\"" (site-base) "/" lang "/" (post-slug post) ".html\">"
       (escape-html (post-title post))
       "</a></li>\n"))))

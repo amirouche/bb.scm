@@ -7,9 +7,10 @@
 # The order below mirrors the dependency DAG:
 #   util base   ->  list-of, mob-append, str-append, string-join, str-concat,
 #                   escape-html-char, escape-html-loop, escape-html
-#   site        ->  site-meta, site-title/tagline/footer, style-css
+#   site        ->  site-meta, site-title/tagline/footer, style-css, site-base
 #   render      ->  post-* accessors, render-paragraphs, render-post,
-#                   lang-switcher, render-page, render-toc-*, render-index
+#                   lang-switcher, render-page, render-toc-*, render-index,
+#                   render-root-index
 #   io          ->  write-file, ensure-dir
 #   posts       ->  18 (3 langs x 2) post combiners
 #   manifests   ->  manifest-en/fr/es, manifest dispatcher
@@ -44,6 +45,7 @@ add src/site/site-meta.en.scm
 done_round
 add src/site/site-meta-helpers.en.scm
 add src/site/style-css.en.scm
+add src/site/site-base.en.scm
 done_round
 
 echo ">> render"
@@ -66,6 +68,7 @@ done_round
 add src/render/render-index.en.scm
 add src/render/render-index.fr.scm fr
 add src/render/render-index.es.scm es
+add src/render/render-root-index.en.scm
 done_round
 
 echo ">> io"

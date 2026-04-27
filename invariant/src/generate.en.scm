@@ -7,4 +7,5 @@
       (define posts (manifest lang))
       (generate-posts lang posts)
       (generate-index lang posts)
-      (write-file "out/style.css" (style-css)))))
+      (write-file "out/style.css" (style-css))
+      (write-file "out/index.html" (render-root-index)))))
