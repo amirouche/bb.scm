@@ -1,6 +1,6 @@
 # bb
 
-**Nurturing a society that recognizes diversity as strength through verifiable knowledge sharing.**
+**Harness the energy of the sun core, so that we become a crew, endlessly.**
 
 > **Experimental**: This is research software under active development.
 
@@ -11,6 +11,8 @@ bb makes that tax optional. Write combiners in your language — name variables,
 Content-addressing gives every combiner a unique fingerprint. Authorship is preserved. Lineage is traceable. Knowledge is shared without losing track of who made what.
 
 ## The abacus: catamorphic arithmetic in six clauses
+
+**English**
 
 ```scheme
 (define arith-eval
@@ -23,9 +25,36 @@ Content-addressing gives every combiner a unique fingerprint. Authorship is pres
     (("do" ,(result)) result)))
 ```
 
-Each `,(a)` is a catamorphic bind — it automatically applies `arith-eval` to the matched sub-expression before the clause body runs. No explicit recursion. No traversal code. The gamma walks the tree by pattern alone.
+**Chinese (Mandarin)**
 
 ```scheme
+(define 求值
+  (gamma
+    (("数" ,n) n)
+    (("加" ,(a) ,(b)) (+ a b))
+    (("减" ,(a) ,(b)) (- a b))
+    (("乘" ,(a) ,(b)) (* a b))
+    (("负" ,(a)) (- 0 a))
+    (("算" ,(result)) result)))
+```
+
+**Tamazight (Tifinagh)**
+
+```scheme
+(define ⴰⵙⴽⴰⵔ
+  (gamma
+    (("ⴰⵎⴹⴰⵏ" ,n) n)
+    (("ⵔⵏⵓ" ,(a) ,(b)) (+ a b))
+    (("ⴽⴽⴻⵙ" ,(a) ,(b)) (- a b))
+    (("ⵔⴱⵓ" ,(a) ,(b)) (* a b))
+    (("ⴰⵢⵏⴰⴳⴻⵏ" ,(a)) (- 0 a))
+    (("ⴻⵔⵔ" ,(result)) result)))
+```
+
+Each `,(a)` is a catamorphic bind — it automatically applies the combiner to the matched sub-expression before the clause body runs. No explicit recursion. No traversal code. The gamma walks the tree by pattern alone.
+
+```scheme
+;; Three names, one hash — same logic, same identity.
 (arith-eval "do"
   (make-sub (make-mul (make-num 10) (make-num 3))
             (make-add (make-num 5) (make-num 7))))
@@ -62,6 +91,89 @@ Exact matching is the foundation — the clean case where two people write the s
 
 bb *is* the Möbius seed — a content-addressed language where timestamps make lineage visible, and names are views into a multilingual registry. Who made what, who built on whom, who absorbed whose work without credit. The mirror doesn't prescribe norms or enforce justice. It refuses amnesia.
 
+## Getting Started
+
+### Install Chez Scheme
+
+**Alpine**
+```bash
+sudo apk add chez-scheme
+```
+
+**Arch Linux**
+```bash
+sudo pacman -S chez-scheme
+```
+
+**Debian / Ubuntu**
+```bash
+sudo apt install chezscheme
+```
+
+**Fedora**
+```bash
+sudo dnf install chez-scheme
+```
+
+**Void Linux**
+```bash
+sudo xbps-install chez-scheme
+```
+
+### Clone and run
+
+```bash
+git clone https://github.com/amirouche/bb.scm
+cd bb.scm/north
+./bb repl
+```
+
+## Command reference
+
+```
+bb — Mobius Seed evaluator and store manager
+
+Usage:
+  bb add [--derived-from=<ref>] [--relation=<type>] <file|->
+                                            Parse, normalize, store, and bind
+  bb add --check <combiner> <check>         Register check for combiner
+  bb caller <ref>                         Show reverse dependency DAG
+  bb check <ref>                          Run all checks for ref and its dependencies
+  bb commit [name... | --all]             Promote staged combiners to committed
+  bb diff <ref> <ref>                     Compare two combiners (pretty-printed diff)
+  bb edit <ref> [lang]                    Edit combiner in $EDITOR, re-add on save
+  bb eval <expression>                    Evaluate a single expression
+  bb log [ref]                            Show timeline
+  bb print <ref>                          Output Chez Scheme library with all dependencies
+  bb anchor <ref>                         Request or upgrade OpenTimestamps proof
+  bb refactor <ref> <ref> <ref> [<ref>]   Replace old with new in root tree
+  bb mapping list <ref>                   List all mappings for a combiner
+  bb mapping delete <ref>                 Delete a mapping (ref must include mapping hash)
+  bb mapping set <ref> <key> <value>      Set a mapping entry (0=name, 1+=params)
+  bb remote add <name> <path>             Add a remote store endpoint
+  bb remote list                          List configured remote store endpoints
+  bb remote remove <name>                 Remove a remote store endpoint
+  bb remote push <name>                   Push committed combiners to remote
+  bb remote pull <name>                   Pull committed combiners from remote
+  bb remote sync                          Pull and push all configured remotes
+  bb remote publish <name> <ref>          Mark ref (and closure) public to <name>
+  bb remote stop <name> <ref>             Stop publishing ref to <name>
+  bb repl                                 Interactive Seed session
+  bb resolve <ref>                        Resolve ref to full spec
+  bb review <ref>                         Mark combiner as reviewed
+  bb run <ref> [args...]                  Evaluate a registered combiner
+  bb search <query>                       Search combiner names and content
+  bb show <ref>                           Display combiner doc and definition
+  bb status                               Show working state
+  bb store info                           Show store statistics
+  bb store init                           Create a new mobius-store
+  bb tree <ref>                           Show dependency DAG
+  bb validate                             Verify store integrity
+  bb worklog <ref> [msg]                  View or add work log entries
+  bb --help                               Show this help
+  bb --version                            Show version
+```
+
 ## Related Work
 
 - **[Unison](https://www.unison-lang.org/)** — content-addressable code where the hash is the identity
@@ -70,3 +182,9 @@ bb *is* the Möbius seed — a content-addressed language where timestamps make 
 - **Non-English-based programming languages** — [Wikipedia overview](https://en.wikipedia.org/wiki/Non-English-based_programming_languages)
 - **Content-addressed storage** — Git, IPFS, Nix
 - **Multilingual programming** — Racket's #lang system, Babylonian programming
+
+---
+
+> "The only thing that makes life possible is permanent, intolerable uncertainty: not knowing what comes next."
+>
+> — Ursula K. Le Guin, *The Dispossessed*
