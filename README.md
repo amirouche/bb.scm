@@ -15,7 +15,7 @@ Content-addressing gives every combiner a unique fingerprint. Authorship is pres
 **English**
 
 ```scheme
-(define arith-eval
+(define abacus
   (gamma
     (("num" ,n) n)
     (("add" ,(a) ,(b)) (+ a b))
@@ -55,7 +55,7 @@ Each `,(a)` is a catamorphic bind — it automatically applies the combiner to t
 
 ```scheme
 ;; Three names, one hash — same logic, same identity.
-(arith-eval "do"
+(abacus "do"
   (make-sub (make-mul (make-num 10) (make-num 3))
             (make-add (make-num 5) (make-num 7))))
 ;; => 18
