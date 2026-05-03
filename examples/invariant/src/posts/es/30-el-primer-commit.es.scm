@@ -1,0 +1,11 @@
+(define post-30-el-primer-commit-es
+  (lambda ()
+    (list-of
+      "30-el-primer-commit"
+      "El Primer Commit"
+      (list-of
+        "Sena nació en el año siete del viaje, la primera niña nacida en el barco. Sus padres eran Pita y un ingeniero de estructuras llamado Leo que se había unido a la misión como reemplazo de última hora y que, según su propio relato, no esperaba quedarse. Sena creció conociendo el almacén de la manera en que los niños criados cerca de grandes ríos conocen los ríos — como un rasgo permanente del paisaje, presente antes de la memoria, asumido en todos los planes."
+        "Aprendió a leer en dos idiomas simultáneamente: inglés y la lengua del tránsito, que para ella era un primer idioma tanto como cualquier otro. Aprendió a leer los diagramas de linaje del almacén antes de aprender a leer oraciones, porque los retratos de hash de Keiko estaban en las paredes de la sala común y había pasado años inventando historias sobre lo que significaban las formas ramificadas."
+        "Cuando tenía once años, Noa le enseñó a escribir un combinador. El primero era trivial — una función que tomaba una palabra del léxico de la lengua del tránsito y devolvía su etimología. Tenía cuatro líneas. Funcionó correctamente al primer intento después de la corrección que Noa había sugerido, que era que necesitaba un caso base para las palabras sin etimología registrada."
+        "El commit fue registrado en el almacén de la manera habitual: un nuevo hash, una entrada de correspondencia en la lengua del tránsito, una atribución de autor a la clave de Sena. La entrada del diario de trabajo estaba en la lengua del tránsito. Decía, en sus propias palabras, aproximadamente: 'primera cosa que hice que el almacén guardó'."
+        "El hash existía. Era suficiente. Era suficiente en el sentido preciso que la tripulación había llegado a entender: la cosa había sido hecha, y el registro de su creación era ahora parte del mismo registro que contenía la Piedra de Rosetta de Yusuf, la primera verificación de Fatou, la biblioteca espectral de Rania, la prueba póstuma del profesor, el léxico de la lengua del tránsito, los nueve invariantes. El almacén los contenía a todos, indiferentemente, fielmente, como siempre había contenido todo — no porque el contenido fuera importante, sino porque el hash era el hash, y el hash no olvidaba."))))

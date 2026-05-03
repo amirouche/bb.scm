@@ -1,0 +1,11 @@
+(define post-12-the-privateer-en
+  (lambda ()
+    (list-of
+      "12-the-privateer"
+      "The Privateer"
+      (list-of
+        "The navigation subsystem had not been written by anyone on the ship. It had been written by a contractor — a small firm that specialized in closed-source trajectory optimization — and delivered as a sealed binary, accompanied by a zero-knowledge proof that the binary's behavior satisfied a formal specification. The specification was in the store. The binary's hash was in the store. The source code was not."
+        "This was the arrangement the mission had accepted because the contractor's algorithm was genuinely better than anything the in-house team could produce in the time available. It was also an arrangement that several crew members were uncomfortable with. The navigation subsystem was not life-support, but it was not optional either. A ship that cannot navigate is a ship that drifts."
+        "The proof was elegant. It demonstrated, without revealing the source, that any input in the specification's domain produced an output in the specification's codomain, and that the output satisfied a set of correctness properties — energy efficiency, collision avoidance, temporal accuracy — that had been formally verified before the ship left the dock. The crew could not read the code. They could verify that the code did what the specification said it did."
+        "Rania, who had become the crew's de facto formal methods specialist, read the proof three times. She found no gaps. She added it to the store as a derivation from the specification, with a worklog entry describing what the proof did and did not guarantee. The last line of her entry read: 'The proof tells us the algorithm is correct for the specified domain. It does not tell us if the domain is complete. Watch the edge cases.'"
+        "The navigation subsystem ran without incident for four years. In the fifth year, on a trajectory correction that was outside the original specification's domain — because no one had anticipated needing it — it produced a suboptimal result. The crew corrected it manually, using a combiner that Yusuf had written in the Hold and which was, as it turned out, good enough. Rania noted in the worklog: 'Edge case. As predicted. Handled.'"))))

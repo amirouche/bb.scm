@@ -1,0 +1,11 @@
+(define post-18-the-refactor-en
+  (lambda ()
+    (list-of
+      "18-the-refactor"
+      "The Refactor Cascade"
+      (list-of
+        "It began with a correct observation. Pita noticed that three separate subsystems were each implementing a variant of the same sliding-window aggregation operation, and that the three variants had diverged over four years of independent maintenance. Each was correct for its own domain. None of them was wrong. But maintaining three implementations of the same concept was work the crew could not afford when the crew was twenty-three people managing a vessel with seven hundred active combiners."
+        "She proposed a refactor: a single canonical sliding-window combiner, registered in the store, from which all three subsystems would derive. The proposal was approved at the crew's technical meeting in fifteen minutes. The refactor took three weeks. Not because the canonical implementation was difficult to write — it was not — but because changing a load-bearing combiner on an operating ship required running the full check suite against every downstream consumer before swapping the reference."
+        "The cascade was this: changing the canonical implementation changed its hash. Changing its hash changed the derivation edge in every combiner that referenced it. Changing those derivation edges changed their hashes. The crew had to trace the entire dependency tree, update every manifest that referenced the old hashes, run the checks at each step, and verify that the behavior was identical before removing the old references from active use."
+        "They did not delete anything. Every old combiner remained in the store, addressed by its original hash, its lineage intact. What changed was which hash the active manifests pointed to. The ship's running systems loaded the new combiners on the next boot cycle. Sigma's monitoring picked up the transition and logged it without incident."
+        "At the end of the refactor, Pita wrote a retrospective. The key finding: the refactor had revealed four additional places where the same pattern existed in slightly different form. She added them to a list labeled 'future work.' The list was in the store. The future work was done, incrementally, over the next eighteen months. No one called this technical debt management. They called it keeping the store coherent."))))

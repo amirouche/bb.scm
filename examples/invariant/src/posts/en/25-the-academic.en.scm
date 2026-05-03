@@ -1,0 +1,11 @@
+(define post-25-the-academic-en
+  (lambda ()
+    (list-of
+      "25-the-academic"
+      "The Academic Researcher"
+      (list-of
+        "The ship's research program had not paused when Earth went quiet. The science did not require Earth's permission to continue. What it required was the store, which was functioning, and the instruments, which were functioning, and the crew, most of whom were functioning well, all things considered."
+        "Dr. Ines, the mission's astrophysicist, had a particular problem in year eight: she needed to publish. Not for career reasons — her career was, in a meaningful sense, on hold until Earth became reachable again. She needed to publish because she had results that were important, that other researchers should know about, and that would be lost if they existed only in her personal notes."
+        "The store was her publication venue. She wrote her results as structured combiners — data combiners whose 'body' was a precisely formatted dataset, with lineage edges to the observational sessions that had produced the data, and natural-language documents that described the methodology and interpretation. She registered her author key in the attribution system, added timestamps via the local anchor chain, and wrote a document she titled 'On Publishing Into a Store Rather Than a Journal.'"
+        "The document argued that store-based publication was, for the mission's purposes, superior to journal publication: it was persistent, it was version-controlled, it was linked to its own derivation history, and it was immediately available to every crew member without the access barriers that had plagued academic publishing on Earth. The peer review was informal — she asked Rania and Pita to verify her methodology, and their verification was recorded as attestation combiners in the store."
+        "When Earth contact was eventually restored — years later, after the dish was rebuilt, after the long silence had ended — her publications were already timestamped, peer-reviewed in the store's sense, and linked to the raw data that had produced them. The journals that received her submissions did not know what to do with citation formats that included SHA-256 hashes. She included a glossary. The reviewers found it unusual. The results were correct."))))

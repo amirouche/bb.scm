@@ -1,0 +1,11 @@
+(define post-06-the-theorist-en
+  (lambda ()
+    (list-of
+      "06-the-theorist"
+      "The PL Theorist"
+      (list-of
+        "Professor Sáenz had published extensively on minimal foundations for programming languages. His view, held since his doctoral thesis, was that most programming languages had too many primitives and that the proliferation of built-in forms was a category of original sin from which subsequent generations of programmers suffered. He came to the Hold for three weeks as an external reviewer and stayed for seven months."
+        "His primary objection to the store's foundation was the number of primitives. He counted them, typed them into a notebook, and presented his analysis at the weekly technical meeting: fourteen primitives was too many. The same expressive power could be achieved with five, perhaps four, if gamma was general enough. He had a proof sketch."
+        "The counterargument came from Yusuf, who pointed out that you could reduce any set of primitives to a smaller set if you were willing to accept impractically slow evaluation. The professor agreed that this was technically true. He said that theoretical minimality and practical utility were different optimization targets and that conflating them was sloppy thinking. Yusuf said that 'sloppy thinking' was a strong phrase to use about people who had shipped working software."
+        "They argued productively for six weeks. The outcome was a formal document: a proof that the primitive set was minimal given the constraint that common operations must be evaluable in polynomial time. The professor was listed as lead author. Yusuf was listed as co-author. The document was added to the store's lineage as a derivation from the original foundation specification."
+        "What surprised the professor most was not the system but the worklogs. Reading through the reasoning that had been logged alongside each primitive decision, he found arguments he had made in published papers, independently, years earlier. He read them carefully. He wrote in the margin of his notebook: 'They found it too.' He did not say this out loud. He added his own key to the author registry and committed his notes to the store."))))

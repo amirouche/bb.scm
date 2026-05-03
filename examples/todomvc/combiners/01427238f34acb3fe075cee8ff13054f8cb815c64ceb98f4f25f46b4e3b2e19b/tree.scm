@@ -1,0 +1,1 @@
+((mobius-primitive-ref 0) ((mobius-primitive-constant-ref 0) 0) ((cons (cons (mobius-wildcard) (cons (mobius-wildcard) (cons 0 (mobius-primitive-constant-ref 0)))) (mobius-catamorphic-bind 1)) ((mobius-primitive-ref 31) 1 (mobius-variable 1))) ((cons (mobius-wildcard) (mobius-catamorphic-bind 2)) (mobius-variable 1)))

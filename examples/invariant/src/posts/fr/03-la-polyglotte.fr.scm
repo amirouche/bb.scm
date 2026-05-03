@@ -1,0 +1,11 @@
+(define post-03-la-polyglotte-fr
+  (lambda ()
+    (list-of
+      "03-la-polyglotte"
+      "La Programmeuse Polyglotte"
+      (list-of
+        "Amara parlait sept langues avant la Cale, et elle n'était pas particulièrement impressionnée par les systèmes qui n'en parlaient qu'une. Le dépôt, quand elle le découvrit pour la première fois, n'avait de correspondances de surface qu'en anglais. Elle déposa une demande officielle au troisième jour de sa première rotation. La demande faisait neuf pages et comprenait une analyse linguistique formelle des risques de maintenance introduits par des systèmes de nommage supposant une seule langue humaine."
+        "Le chef d'équipe, un Suédois tranquille prénommé Erik, lut les neuf pages en entier. Puis il demanda à Amara d'expliquer l'étape de normalisation de Bruijn en termes simples. Elle le fit. Il dit : « Donc le hachage ne sait pas dans quelle langue est le nom. » Elle dit : « Exactement. Le hachage est la vérité. Le nom est la porte. » Il approuva le travail sur les correspondances multilingues l'après-midi même."
+        "Amara ajouta le wolof en premier. Elle avait grandi à Dakar et savait que le wolof était une langue dotée d'un vocabulaire technique précis que la plupart des systèmes informatiques n'avaient jamais essayé d'accommoder. Elle nomma les combinateurs de base : 'defar' pour créer, 'yëgël' pour comprendre, 'xam' pour savoir. Elle testa chaque correspondance contre le hachage, observant le dépôt confirmer que le nom anglais et le nom wolof résolvaient vers le même arbre."
+        "Le moment qui resta gravé en elle fut la première fois qu'un membre plus jeune de l'équipe — Rania, du Caire — chercha un combinateur par son nom arabe et le trouva. Le nom n'était pas une traduction du nom anglais. C'était un mot différent pour le même concept, choisi pour sa précision en arabe plutôt que pour sa similarité phonétique avec l'original anglais. Le hachage confirma qu'il s'agissait de la même logique. Rania ne dit rien. Elle commença simplement à l'utiliser."
+        "Amara ajouta le français, l'espagnol et le tamazight avant la fin de la rotation à la Cale. Elle en était à trois semaines d'apprentissage du mandarin quand la fenêtre de départ fut annoncée. Elle mit le manuel de langue dans ses bagages personnels. Il y aurait du temps."))))

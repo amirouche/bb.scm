@@ -1,0 +1,11 @@
+(define post-22-the-stolen-en
+  (lambda ()
+    (list-of
+      "22-the-stolen"
+      "The Person Who Was Stolen From"
+      (list-of
+        "Rania had written the spectral analysis library in the second year of the voyage. She had written it in a single four-day period, working through two sleep cycles, producing eleven combiners that collectively enabled the ship's instruments to identify atmospheric composition at distances where previous methods had required much closer approach. It was, by any measure, significant work."
+        "When she searched the store two years later, she found her library cited in a derivative work that she had not known existed. The derivative was registered by an author key she did not recognize. The worklog entry on the derivative said only: 'Extended from spectral-analysis-lib for high-albedo environments.' No acknowledgment. No communication. No record of having told her."
+        "She was angry. She sat with the anger for a day before she did anything, because the anger was legitimate and she did not want to handle it badly. Then she read the derivative carefully. It was technically correct. The extension was useful. The author had not changed her work — they had added to it, as the derivation system was designed to allow. The store's lineage made clear that her combiners were the ancestors of theirs."
+        "She requested a crew meeting. Not to accuse anyone — the author had done nothing technically wrong — but to establish a practice. The practice she proposed was simple: when you derive from someone's work, you tell them. Not because the store required it. The store did not require it; the store only recorded the derivation edge. But because the work had come from somewhere, and the person it had come from was on the same ship."
+        "The practice was adopted. The author, a younger crew member who had genuinely not thought about this dimension of derivation, added an acknowledgment to the worklog. The lineage of the extension now included a note: 'Derived from R. Khaled's spectral analysis library, with her knowledge and thanks.' Rania read it. She did not reply. She went back to work. The library was still hers, in the only sense that mattered: the hash pointed to what she had built."))))

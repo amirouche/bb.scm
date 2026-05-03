@@ -1,0 +1,11 @@
+(define post-21-the-silence-en
+  (lambda ()
+    (list-of
+      "21-the-silence"
+      "The Silence"
+      (list-of
+        "The last message from Earth arrived on a Tuesday, ship time, at 14:32:07 UTC+8, which was the timezone the crew had chosen because it was nobody's home timezone and therefore nobody's adjustment to make. The message was a routine telemetry acknowledgment. It said, in the compact data format the mission used for status exchanges: all nominal, next window in 72 hours. The next window opened. No message came through it."
+        "The antenna was functioning. The analysis was unambiguous: the transmitter on Earth's end had gone silent. Not jammed — the background noise profile was clean. Not blocked — the geometry was correct. Simply quiet. The 72-hour window passed. Then another. The crew ran the diagnostic suite on the antenna system. All checks passed. The antenna was fine. Earth was not transmitting."
+        "They did not panic. This deserves emphasis: they did not panic. They had been trained for communication loss scenarios, they had discussed them in quarterly drills, and they had a protocol. The protocol was to continue the mission as planned, because the mission plan was in the store and the store did not require Earth to function. What they felt was harder to name — a shift, like the moment when you realize you have been holding your breath for a long time."
+        "Tariq noted in the crew health log that most crew members slept fewer hours in the week following the silence. He did not note what they reported doing with the extra hours. Most of them were in the store. Reading the worklogs. Following the derivation chains back to the Hold, back to Yusuf's Pi cluster, back to the hand-annotated Rosetta Stone that Yusuf had described in a worklog entry and which someone had photographed and committed as a document combiner."
+        "The store did not change when Earth went quiet. Every hash that had been in the store before the silence was still in the store after it. Every check still ran. Every lineage edge still pointed to the same parent. The silence was an external event. The store was internal. The crew had known this intellectually. They were learning it, now, in a different register."))))

@@ -21,6 +21,7 @@
           (bb serialization)
           (bb hash)
           (bb store)
+          (bb http)
           (bb z3))
 
   ;; ================================================================
@@ -48,6 +49,7 @@
   ;;   bb remote publish <name> <ref> — mark ref public to <name>
   ;;   bb remote stop <name> <ref>    — stop publishing ref to <name>
   ;;   bb repl                        — interactive Seed session
+  ;;   bb serve [--port N] [--api-key K] <app-ref> <handler-ref> — serve over HTTP
   ;;   bb store init                  — create new mobius-store
   ;;   bb store info                  — show store statistics
   ;;   bb status                      — show working state
@@ -99,6 +101,7 @@
       (display "  bb status                               Show working state\n")
       (display "  bb store info                           Show store statistics\n")
       (display "  bb store init                           Create a new mobius-store\n")
+      (display "  bb serve [--port N] [--api-key K] <app-ref> <handler-ref>  Serve over HTTP\n")
       (display "  bb tree <ref>                           Show dependency DAG\n")
       (display "  bb validate                             Verify store integrity\n")
       (display "  bb worklog <ref> [msg]                  View or add work log entries\n")
@@ -317,6 +320,32 @@
            (for-all char-alphabetic?
                     (string->list s)))))
 
+  ;; Look up a "name@hashPrefix" ref in the name-index with prefix tolerance.
+  ;; The index stores "name@minimalShortHash" -> fullHash, but any longer prefix
+  ;; of the full hash (including the full hash itself) must also resolve.
+  ;; Returns the matching cons cell, or #f if not found or ambiguous.
+  (define name-index-prefix-lookup
+    (lambda (name-index ref)
+      (or (assoc ref name-index)
+          (let ((at (let loop ((i 0))
+                      (cond ((= i (string-length ref)) #f)
+                            ((char=? (string-ref ref i) #\@) i)
+                            (else (loop (+ i 1)))))))
+            (and at
+                 (let ((name-part   (substring ref 0 at))
+                       (hash-prefix (substring ref (+ at 1) (string-length ref))))
+                   (let ((plen (string-length hash-prefix)))
+                     (let ((matches
+                            (filter (lambda (e)
+                                      (let ((k (car e)) (v (cdr e)))
+                                        (and (> (string-length k) at)
+                                             (char=? (string-ref k at) #\@)
+                                             (string=? (substring k 0 at) name-part)
+                                             (<= plen (string-length v))
+                                             (string=? (substring v 0 plen) hash-prefix))))
+                                    name-index)))
+                       (and (= (length matches) 1) (car matches))))))))))
+
   ;; Resolve a single identifier (name or hash prefix) to a full hash.
   ;; Checks name-index first, then hash prefix match.
   (define resolve-name-to-hash
@@ -336,15 +365,29 @@
                  ((= (length name-matches) 1)
                   (cdar name-matches))
                  ((> (length name-matches) 1)
-                  ;; Pick the combiner with the most recent lineage timestamp
-                  (let loop ((remaining name-matches) (best-hash #f) (best-ts #f))
+                  ;; Pick the most recently staged version.
+                  ;; Primary key:   latest committed timestamp (all in a batch share one).
+                  ;; Secondary key: latest WIP creation timestamp (set per `bb add` run,
+                  ;;                unique even when committed timestamps are equal).
+                  (let loop ((remaining name-matches)
+                             (best-hash #f) (best-committed #f) (best-wip #f))
                     (if (null? remaining)
                         (or best-hash (cdar name-matches))
                         (let* ((h (cdar remaining))
-                               (ts (store-combiner-latest-timestamp root h)))
-                          (if (and ts (or (not best-ts) (string>? ts best-ts)))
-                              (loop (cdr remaining) h ts)
-                              (loop (cdr remaining) best-hash best-ts))))))
+                               (committed (store-combiner-latest-timestamp root h))
+                               (wip       (store-combiner-wip-timestamp root h))
+                               (wins?
+                                (cond
+                                 ((not committed) #f)
+                                 ((not best-committed) #t)
+                                 ((string>? committed best-committed) #t)
+                                 ((string=? committed best-committed)
+                                  (and wip (or (not best-wip)
+                                               (string>? wip best-wip))))
+                                 (else #f))))
+                          (if wins?
+                              (loop (cdr remaining) h committed wip)
+                              (loop (cdr remaining) best-hash best-committed best-wip))))))
                  (else
                   ;; Try hash prefix match
                   (resolve-hash-only root name)))))))))
@@ -369,9 +412,9 @@
          ((= (length parts) 2)
           (let ((part1 (car parts))
                 (part2 (cadr parts)))
-            (let ((full-entry (assoc ref-string name-index)))
+            (let ((full-entry (name-index-prefix-lookup name-index ref-string)))
               (if full-entry
-                  ;; Exact match on "name@hash" disambiguated entry
+                  ;; Exact or prefix match on "name@hash" disambiguated entry
                   (values (cdr full-entry) #f #f)
                   ;; Check if part1 is a name (exact or disambiguated) in the index
                   (let ((name-entry (assoc part1 name-index))
@@ -952,6 +995,7 @@
         (display "bb tree: missing name or hash\n" (current-error-port))
         (exit 1))
       (let* ((name (car arguments))
+             (max-depth (%parse-flag-int arguments "--depth" #f))
              (root (store-find-root (current-directory)))
              (name-index (store-build-name-index root))
              (hash (let-values (((h l m) (resolve-ref name-index root name))) h))
@@ -959,7 +1003,7 @@
              (short-hash (store-make-short-hash (store-list-all-stored-hashes root))))
         (define visited (make-hashtable string-hash string=?))
         (define print-tree
-          (lambda (fhash depth)
+          (lambda (fhash indent remaining)
             (unless (hashtable-ref visited fhash #f)
               (hashtable-set! visited fhash #t)
               (let* ((display-name (or (hash->name fhash)
@@ -974,16 +1018,18 @@
                                     #f
                                     (begin (hashtable-set! seen h #t) #t)))
                               deps)))
-                (display (make-string (* depth 2) #\space))
+                (display (make-string (* indent 2) #\space))
                 (display display-name)
                 (display " [")
                 (display (short-hash fhash))
                 (display "]\n")
-                (for-each
-                 (lambda (dep-hash)
-                   (print-tree dep-hash (+ depth 1)))
-                 unique-deps)))))
-        (print-tree hash 0))))
+                (unless (and max-depth (= remaining 0))
+                  (for-each
+                   (lambda (dep-hash)
+                     (print-tree dep-hash (+ indent 1)
+                                 (if max-depth (- remaining 1) remaining)))
+                   unique-deps))))))
+        (print-tree hash 0 (or max-depth 0)))))
 
   ;; ================================================================
   ;; bb check — run checks for ref and its dependencies
@@ -1111,27 +1157,45 @@
         (display "bb caller: missing name or hash\n" (current-error-port))
         (exit 1))
       (let* ((name (car arguments))
+             (max-depth (%parse-flag-int arguments "--depth" 1))
              (root (store-find-root (current-directory)))
              (name-index (store-build-name-index root))
              (target-hash (let-values (((h l m) (resolve-ref name-index root name))) h))
              (hash->name (make-hash->name name-index root))
              (short-hash (store-make-short-hash (store-list-all-stored-hashes root))))
+        ;; Collect one hop of callers for a given set of hashes.
+        (define callers-of
+          (lambda (hashes visited)
+            (let ((result '()))
+              (for-each
+               (lambda (entry)
+                 (let ((entry-hash (cdr entry)))
+                   (unless (hashtable-ref visited entry-hash #f)
+                     (let ((deps (guard (exn (#t '()))
+                                   (extract-refs (store-load-combiner root entry-hash)))))
+                       (when (exists (lambda (h) (hashtable-ref visited h #f)) deps)
+                         (hashtable-set! visited entry-hash #t)
+                         (set! result (cons entry-hash result)))))))
+               name-index)
+              result)))
         (display "Callers of ")
         (display (or (hash->name target-hash) target-hash))
         (display ":\n")
-        (for-each
-         (lambda (entry)
-           (let* ((entry-name (car entry))
-                  (entry-hash (cdr entry))
-                  (body (store-load-combiner root entry-hash))
-                  (deps (extract-refs body)))
-             (when (member target-hash deps)
-               (display "  ")
-               (display entry-name)
-               (display " [")
-               (display (short-hash entry-hash))
-               (display "]\n"))))
-         name-index))))
+        (let ((visited (make-hashtable string-hash string=?)))
+          (hashtable-set! visited target-hash #t)
+          (let loop ((frontier (list target-hash)) (remaining max-depth))
+            (let ((next (callers-of frontier visited)))
+              (for-each
+               (lambda (h)
+                 (display "  ")
+                 (display (or (hash->name h) (short-hash h)))
+                 (display " [")
+                 (display (short-hash h))
+                 (display "]\n"))
+               next)
+              (when (and (not (null? next))
+                         (or (= max-depth 0) (> remaining 1)))
+                (loop next (- remaining 1)))))))))
 
   ;; ================================================================
   ;; bb log — show lineage timeline
@@ -1836,7 +1900,7 @@
         (let ((count 0))
           (for-each
            (lambda (name)
-             (let ((entry (assoc name name-index)))
+             (let ((entry (name-index-prefix-lookup name-index name)))
                (if entry
                    (let* ((fhash (cdr entry))
                           ;; All wip records sorted ascending by 'created.
@@ -1929,20 +1993,28 @@
                             (store-record-retract-checks!
                              root fhash author (cdr retracted)))))
                       retract-records)
-                     (let ((latest-relation
-                            (cond
-                             ((null? add-representatives) "commit")
-                             (else
-                              (let ((r (assq 'relation (car (reverse add-representatives)))))
-                                (if r (cdr r) "commit"))))))
-                       (store-add-worklog-entry!
-                        root fhash
-                        (string-append "committed " name " ("
-                                       latest-relation ")")))
-                     (set! count (+ count 1))
-                     (display "  committed: ")
-                     (display name)
-                     (newline))
+                     (when (or (not (null? add-representatives))
+                               (not (null? retract-records)))
+                       (let ((latest-relation
+                              (cond
+                               ((null? add-representatives) "commit")
+                               (else
+                                (let ((r (assq 'relation (car (reverse add-representatives)))))
+                                  (if r (cdr r) "commit"))))))
+                         (store-add-worklog-entry!
+                          root fhash
+                          (string-append "committed " name " ("
+                                         latest-relation ")")))
+                       (set! count (+ count 1))
+                       (display "  committed: ")
+                       (display name)
+                       (newline))
+                     ;; Delete wip files now that they have been promoted.
+                     (for-each
+                      (lambda (f)
+                        (delete-file
+                         (store-path-join (store-combiner-directory root fhash) "lineage" f)))
+                      wip-files))
                    (begin
                      (display "  unknown: ")
                      (display name)
@@ -2742,6 +2814,94 @@
             (for-each walk (store-load-checks root h))))
         (reverse order))))
 
+  ;; ================================================================
+  ;; HTTP remote helpers (mobius://)
+  ;; ================================================================
+
+  ;; Parse a newline-separated list of hashes from a bytevector.
+  (define %parse-hash-list
+    (lambda (bv)
+      (let ((text (utf8->string bv)))
+        (filter (lambda (s) (> (string-length s) 0))
+                (let loop ((i 0) (start 0) (acc '()))
+                  (cond
+                    ((= i (string-length text))
+                     (reverse (if (> i start)
+                                  (cons (substring text start i) acc)
+                                  acc)))
+                    ((char=? (string-ref text i) #\newline)
+                     (loop (+ i 1) (+ i 1)
+                           (if (> i start)
+                               (cons (substring text start i) acc)
+                               acc)))
+                    (else (loop (+ i 1) start acc))))))))
+
+  ;; Push committed combiners to a mobius:// remote via HTTP PUT.
+  (define %push-via-http!
+    (lambda (root remote-entry to-push)
+      (let* ((base-url (mobius-url->base-url (store-remote-entry-url remote-entry)))
+             (api-key (store-remote-entry-api-key remote-entry)))
+        (let-values (((idx-status idx-body) (http-get base-url "/api/store/index" api-key)))
+          (let ((remote-hashes (if (= idx-status 200)
+                                   (%parse-hash-list idx-body)
+                                   '())))
+            (for-each
+              (lambda (fhash)
+                (unless (member fhash remote-hashes)
+                  (let-values (((fs-status fs-body)
+                                (http-get base-url
+                                          (string-append "/api/store/combiners/" fhash "/files")
+                                          api-key)))
+                    (when (= fs-status 200)
+                      (let ((files (%parse-hash-list fs-body)))
+                        (for-each
+                          (lambda (relpath)
+                            (let* ((local-fp (store-path-join (store-combiner-directory root fhash) relpath))
+                                   (content (call-with-port (open-file-input-port local-fp)
+                                              get-bytevector-all)))
+                              (http-put base-url
+                                        (string-append "/api/store/combiners/" fhash "/" relpath)
+                                        content api-key)))
+                          files))))))
+              to-push))))))
+
+  ;; Pull combiners from a mobius:// remote via HTTP GET.
+  (define %pull-via-http!
+    (lambda (root remote-entry)
+      (let* ((base-url (mobius-url->base-url (store-remote-entry-url remote-entry)))
+             (api-key (store-remote-entry-api-key remote-entry)))
+        (let-values (((idx-status idx-body) (http-get base-url "/api/store/index" api-key)))
+          (when (= idx-status 200)
+            (let* ((remote-hashes (%parse-hash-list idx-body))
+                   (local-hashes (store-list-all-stored-hashes root)))
+              (for-each
+                (lambda (fhash)
+                  (unless (member fhash local-hashes)
+                    (let-values (((fs-status fs-body)
+                                  (http-get base-url
+                                            (string-append "/api/store/combiners/" fhash "/files")
+                                            api-key)))
+                      (when (= fs-status 200)
+                        (for-each
+                          (lambda (relpath)
+                            (let-values (((f-status f-body)
+                                          (http-get base-url
+                                                    (string-append "/api/store/combiners/" fhash "/" relpath)
+                                                    api-key)))
+                              (when (= f-status 200)
+                                (let* ((cdir (store-combiner-directory root fhash))
+                                       (fp (store-path-join cdir relpath))
+                                       (dir (let loop ((i (- (string-length fp) 1)))
+                                              (cond ((< i 0) ".")
+                                                    ((char=? (string-ref fp i) #\/) (substring fp 0 i))
+                                                    (else (loop (- i 1)))))))
+                                  (store-ensure-directory dir)
+                                  (call-with-port
+                                    (open-file-output-port fp (file-options replace) (buffer-mode block))
+                                    (lambda (p) (put-bytevector p f-body)))))))
+                          (%parse-hash-list fs-body))))))
+                remote-hashes)))))))
+
   ;; Set of combiner hashes to push to <remote-name>: every committed combiner
   ;; explicitly published to that remote, plus the transitive closure of their
   ;; tree refs and lineage checks (committed only — uncommitted deps are
@@ -3104,7 +3264,9 @@
           (and (>= (string-length url) 10)
                (string=? (substring url 0 10) "git+ssh://"))
           (and (>= (string-length url) 12)
-               (string=? (substring url 0 12) "git+https://")))))
+               (string=? (substring url 0 12) "git+https://"))
+          (and (>= (string-length url) 9)
+               (string=? (substring url 0 9) "mobius://")))))
 
   (define command-remote-list
     (lambda (root)
@@ -3126,21 +3288,36 @@
     (lambda (root rest)
       (let* ((read-only (and (not (null? rest))
                              (string=? (car rest) "--read-only")))
-             (rest (if read-only (cdr rest) rest)))
+             (rest (if read-only (cdr rest) rest))
+             (api-key (let loop ((r rest))
+                        (cond ((null? r) #f)
+                              ((and (>= (string-length (car r)) 10)
+                                    (string=? (substring (car r) 0 10) "--api-key="))
+                               (substring (car r) 10 (string-length (car r))))
+                              ((and (string=? (car r) "--api-key") (not (null? (cdr r))))
+                               (cadr r))
+                              (else (loop (cdr r))))))
+             (rest (let loop ((r rest) (acc '()))
+                     (cond ((null? r) (reverse acc))
+                           ((and (>= (string-length (car r)) 10)
+                                 (string=? (substring (car r) 0 10) "--api-key="))
+                            (loop (cdr r) acc))
+                           ((and (string=? (car r) "--api-key") (not (null? (cdr r))))
+                            (loop (cddr r) acc))
+                           (else (loop (cdr r) (cons (car r) acc)))))))
         (when (< (length rest) 2)
-          (display "bb remote add: usage: bb remote add [--read-only] <name> <url>\n"
+          (display "bb remote add: usage: bb remote add [--read-only] [--api-key K] <name> <url>\n"
                    (current-error-port))
           (exit 1))
         (let* ((name (car rest))
                (url (cadr rest)))
           (unless (url-scheme-valid? url)
-            (display "bb remote add: URL must start with file://, git+ssh://, or git+https://\n"
+            (display "bb remote add: URL must start with file://, git+ssh://, git+https://, or mobius://\n"
                      (current-error-port))
             (exit 1))
           (let* ((remotes (store-config-remotes root))
-                 (new-entry (list name
-                                  (cons 'url url)
-                                  (cons 'read-only read-only)))
+                 (new-entry (append (list name (cons 'url url) (cons 'read-only read-only))
+                                    (if api-key (list (cons 'api-key api-key)) '())))
                  (new-remotes (cons new-entry
                                     (filter (lambda (r)
                                               (not (string=? (car r) name)))
@@ -3151,6 +3328,7 @@
             (display "' added -> ")
             (display url)
             (when read-only (display " [read-only]"))
+            (when api-key (display " [api-key set]"))
             (newline))))))
 
   (define command-remote-remove
@@ -3186,25 +3364,31 @@
           (display remote-name)
           (display "' is read-only\n" (current-error-port))
           (exit 1))
-        (let* ((remote-path (store-remote-entry-path remote-entry))
-               (name-index (store-build-name-index root))
-               (hash->name (make-hash->name name-index root))
-               (short-hash (store-make-short-hash (store-list-all-stored-hashes root)))
+        (let* ((name-index (store-build-name-index root))
                (to-push (push-closure-for-remote root remote-name name-index))
-               (count 0))
-          (store-ensure-directory (store-path-join remote-path "combiners"))
-          (for-each
-           (lambda (fhash)
-             (store-copy-combiner! root remote-path fhash)
-             (set! count (+ count 1))
-             (display "  pushed: ")
-             (display (or (hash->name fhash) (short-hash fhash)))
-             (newline))
-           to-push)
-          (display count)
-          (display " combiner(s) pushed to ")
-          (display remote-name)
-          (display ".\n")))))
+               (count (length to-push)))
+          (if (store-remote-entry-mobius? remote-entry)
+              (begin
+                (%push-via-http! root remote-entry to-push)
+                (display count)
+                (display " combiner(s) pushed to ")
+                (display remote-name)
+                (display " (HTTP).\n"))
+              (let* ((remote-path (store-remote-entry-path remote-entry))
+                     (hash->name (make-hash->name name-index root))
+                     (short-hash (store-make-short-hash (store-list-all-stored-hashes root))))
+                (store-ensure-directory (store-path-join remote-path "combiners"))
+                (for-each
+                  (lambda (fhash)
+                    (store-copy-combiner! root remote-path fhash)
+                    (display "  pushed: ")
+                    (display (or (hash->name fhash) (short-hash fhash)))
+                    (newline))
+                  to-push)
+                (display count)
+                (display " combiner(s) pushed to ")
+                (display remote-name)
+                (display ".\n")))))))
 
   (define command-remote-pull
     (lambda (root rest)
@@ -3219,26 +3403,32 @@
           (display remote-name)
           (display "'. Use 'bb remote add' first.\n" (current-error-port))
           (exit 1))
-        (let* ((remote-path (store-remote-entry-path remote-entry))
-               (local-index (store-build-name-index root))
-               (remote-index (store-build-name-index remote-path))
-               (count 0))
-          (for-each
-           (lambda (entry)
-             (let* ((name (car entry))
-                    (fhash (cdr entry))
-                    (local-entry (assoc name local-index)))
-               (unless (and local-entry (string=? (cdr local-entry) fhash))
-                 (store-copy-combiner! remote-path root fhash)
-                 (set! count (+ count 1))
-                 (display "  pulled: ")
-                 (display name)
-                 (newline))))
-           remote-index)
-          (display count)
-          (display " combiner(s) pulled from ")
-          (display remote-name)
-          (display ".\n")))))
+        (if (store-remote-entry-mobius? remote-entry)
+            (begin
+              (%pull-via-http! root remote-entry)
+              (display "Pull from ")
+              (display remote-name)
+              (display " (HTTP) complete.\n"))
+            (let* ((remote-path (store-remote-entry-path remote-entry))
+                   (local-index (store-build-name-index root))
+                   (remote-index (store-build-name-index remote-path))
+                   (count 0))
+              (for-each
+                (lambda (entry)
+                  (let* ((name (car entry))
+                         (fhash (cdr entry))
+                         (local-entry (assoc name local-index)))
+                    (unless (and local-entry (string=? (cdr local-entry) fhash))
+                      (store-copy-combiner! remote-path root fhash)
+                      (set! count (+ count 1))
+                      (display "  pulled: ")
+                      (display name)
+                      (newline))))
+                remote-index)
+              (display count)
+              (display " combiner(s) pulled from ")
+              (display remote-name)
+              (display ".\n"))))))
 
   (define command-remote-sync
     (lambda (root)
@@ -3458,6 +3648,92 @@
            (display "'\n")]))))
 
   ;; ================================================================
+  ;; bb serve — run the Mobius HTTP server
+  ;; ================================================================
+
+  ;; Parse a simple integer flag: --flag=N or --flag N.
+  ;; Returns default if flag is absent or value is not an integer.
+  (define %parse-flag-int
+    (lambda (args flag default)
+      (let loop ((r args))
+        (cond
+          ((null? r) default)
+          ((and (> (string-length (car r)) (+ (string-length flag) 1))
+                (string=? (substring (car r) 0 (+ (string-length flag) 1))
+                           (string-append flag "=")))
+           (or (string->number (substring (car r) (+ (string-length flag) 1)
+                                          (string-length (car r))))
+               default))
+          ((and (string=? (car r) flag) (not (null? (cdr r))))
+           (or (string->number (cadr r)) default))
+          (else (loop (cdr r)))))))
+
+  ;; Parse a string flag: --flag=V or --flag V.
+  (define %parse-flag-str
+    (lambda (args flag default)
+      (let loop ((r args))
+        (cond
+          ((null? r) default)
+          ((and (> (string-length (car r)) (+ (string-length flag) 1))
+                (string=? (substring (car r) 0 (+ (string-length flag) 1))
+                           (string-append flag "=")))
+           (substring (car r) (+ (string-length flag) 1) (string-length (car r))))
+          ((and (string=? (car r) flag) (not (null? (cdr r))))
+           (cadr r))
+          (else (loop (cdr r)))))))
+
+  ;; Return positional args from args, skipping flags and their values.
+  (define %positional-args
+    (lambda (args)
+      (let loop ((r args) (acc '()))
+        (cond
+          ((null? r) (reverse acc))
+          ((and (>= (string-length (car r)) 2)
+                (char=? (string-ref (car r) 0) #\-)
+                (char=? (string-ref (car r) 1) #\-))
+           (if (and (or (string=? (car r) "--port")
+                        (string=? (car r) "--api-key"))
+                    (not (null? (cdr r))))
+               (loop (cddr r) acc)
+               (loop (cdr r) acc)))
+          (else (loop (cdr r) (cons (car r) acc)))))))
+
+  (define command-serve
+    (lambda (rest)
+      (let* ((port         (%parse-flag-int rest "--port" 8080))
+             (api-key      (%parse-flag-str rest "--api-key" #f))
+             (positional   (%positional-args rest))
+             (app-ref      (if (>= (length positional) 1) (car positional)
+                               (error 'bb-serve "missing <app-ref>")))
+             (handler-ref  (if (>= (length positional) 2) (cadr positional)
+                               (error 'bb-serve "missing <handler-ref>")))
+             (root         (store-find-root (current-directory)))
+             (name-index   (store-build-name-index root))
+             (app-hash     (let-values (((h _l _m) (resolve-ref name-index root app-ref))) h))
+             (handler-hash (let-values (((h _l _m) (resolve-ref name-index root handler-ref))) h))
+             (libdirs      (apply string-append
+                                  (map (lambda (pair)
+                                         (string-append " --libdirs " (car pair)))
+                                       (library-directories))))
+             (tmp          (string-append "/tmp/bb-serve-" (number->string (random 1000000000)) ".scm"))
+             (script       (with-output-to-string
+                             (lambda ()
+                               (write `(begin
+                                         (import (bb server))
+                                         (server-start! ,root ,port ,api-key
+                                                        ,app-hash ,handler-hash)))))))
+        (display "bb serve: store at ")
+        (display root)
+        (display ", port ")
+        (display port)
+        (newline)
+        (call-with-port
+          (open-file-output-port tmp (file-options replace) (buffer-mode block))
+          (lambda (p) (put-bytevector p (string->utf8 script))))
+        (system (string-append "scheme --quiet" libdirs " < " tmp))
+        (delete-file tmp))))
+
+  ;; ================================================================
   ;; Main entry point
   ;; ================================================================
 
@@ -3490,6 +3766,7 @@
                 [(anchor) (command-anchor rest)]
                 [(mapping) (command-mapping rest)]
                 [(remote) (command-remote rest)]
+                [(serve) (command-serve rest)]
                 [(run) (command-run rest)]
                 [(status) (command-status)]
                 [(show) (command-show rest)]

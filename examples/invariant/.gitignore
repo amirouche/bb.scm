@@ -1,0 +1,7 @@
+combiners/
+out/
+worklog/
+reviewed/
+*.wip.scm
+identity.*.scm
+spike-*.scm

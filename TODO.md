@@ -1,0 +1,25 @@
+# TODO
+
+- [ ] Rewrite `guard` to accept entry/exit gamma clauses with proper continuation boundary semantics (§12.3)
+- [ ] Bind `continuation-exit` in initial environment as root continuation with guard traversal on exit (§12.4)
+- [ ] Implement `continuation-extend` in Möbius once `continuation-apply` and `call/cc` are solid (§14.2)
+- [ ] Implement `error` combiner in Möbius using `continuation-exit` (§14.2)
+- [ ] Validate at normalization time that no bare identifiers appear in pattern position and emit clear error (§5.2)
+- [ ] Enforce at registration time that no anonymous `gamma`/`lambda` are passed as arguments (§3.2)
+- [ ] Support `.round.mobius`, `.curly.mobius`, and `.curly.mobius` file extension (§3.1)
+- [ ] Implement curly surface reader and printer (braces, semicolons, infix, `case`, `//` comments) (§3.3)
+- [ ] Implement spacy surface reader and printer (indentation, colons, INDENT/DEDENT, `#` comments) (§3.4)
+- [ ] Add infix→prefix translation with mandatory full parenthesization to curly/spacy readers (§6.4)
+- [ ] Write surface equivalence test suite verifying identical hashes across round/curly/spacy (§3.7)
+- [ ] Resolve free names to content hashes at `bb add` time; reject unresolved names (§1.3)
+- [ ] Enforce DAG at registration: reject forward references and verify every dependency is already stored (§7.3)
+- [ ] Define check suite format and implement `bb check HASH` CLI command with pass/fail reporting
+- [ ] Implement `bb refactor name old-hash new-hash` to rewrite hash references across dependent combiners
+- [ ] Extend lineage record with optional `derived-from` hash and `relation` enum (fork/fix/refine/extend/rewrite)
+- [ ] Implement `bb search --near` using SimHash or tree-edit-distance over de Bruijn trees
+- [ ] Integrate OpenTimestamps and implement `bb anchor` command with OTS proof storage and verification
+- [ ] Add sealed/disclosed flag to lineage records and support `bb commit --sealed` or `bb seal <ref>`
+- [ ] Design and implement store federation (local-only, federated, centralized modes) (§16.5)
+- [ ] Implement interactive DAG walk in `bb review <identifier>` with mark/skip and accumulated attestations
+- [ ] Implement `bb review --status` to surface unreviewed hashes after a refactor
+- [ ] Polish `bb edit identifier@lang` workflow and verify re-registration with correct language mapping

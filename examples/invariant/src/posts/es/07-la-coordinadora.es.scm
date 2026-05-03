@@ -1,0 +1,11 @@
+(define post-07-la-coordinadora-es
+  (lambda ()
+    (list-of
+      "07-la-coordinadora"
+      "La Coordinadora"
+      (list-of
+        "Nadie había contratado específicamente a Fatou para coordinar el trabajo de integración de software de la Bodega. El papel había existido como un vacío en el organigrama durante los primeros tres meses, lo que significaba que Fatou — que tenía experiencia en ingeniería de sistemas y un don para ver cómo las cosas se desmoronaban antes de que lo hicieran — lo cubrió presentándose a cada reunión y anotando lo que la gente acordaba."
+        "Su primera contribución sistemática fue la suite de verificaciones. El almacén tenía un mecanismo para adjuntar procedimientos de verificación a los combinadores — pequeños programas que probaban invariantes e informaban de éxito o fracaso — pero nadie había escrito verificaciones para la biblioteca base. Fatou pasó dos semanas leyendo cada combinador de la biblioteca base, escribiendo una verificación para cada uno y luego ejecutando la suite completa cada mañana antes de la reunión del equipo. Abría incidencias para todo lo que fallaba."
+        "Las verificaciones no eran matemáticas nuevas. Eran el tipo de cosa que un programador cuidadoso verificaría a mano: ¿se comporta correctamente la lista vacía, preserva la longitud la concatenación de cadenas, maneja la función de escape los casos límite. Lo que las hacía valiosas era que se ejecutaban. Cada día. Contra el almacén real, no una simulación."
+        "Cuando se editaba un combinador — por Yusuf, por Lylia, por quien fuera — las verificaciones se ejecutaban de nuevo. La inmutabilidad del almacén significaba que editar un combinador producía un nuevo hash, y el nuevo hash portaba un nuevo conjunto de verificaciones. Fatou rastreaba qué verificaciones se habían escrito para qué versiones. Cuando se reemplazaba una versión, las verificaciones permanecían adjuntas a su hash. Siempre se podía verificar que la versión antigua se comportaba como se había comportado."
+        "Formó a otros tres miembros del equipo para escribir verificaciones antes de la partida. Escribió una guía llamada 'Para qué sirve una verificación', que tenía cuatro párrafos y no contenía código. La guía fue añadida al almacén bajo un hash. Era el primer documento en lenguaje natural registrado en el sistema, y sobrevivió al viaje."))))

@@ -44,6 +44,7 @@
           ~check-store-review
           store-make-short-hash
           store-combiner-latest-timestamp
+          store-combiner-wip-timestamp
           store-load-checks-for-combiner
           store-load-checks
           store-record-wip-retract-checks!
@@ -56,6 +57,8 @@
           store-delete-mapping!
           store-list-mappings
           store-remote-entry-read-only?
+          store-remote-entry-api-key
+          store-remote-entry-mobius?
           store-current-iso-timestamp
           store-timestamp-request!
           store-timestamp-upgrade!
@@ -657,6 +660,30 @@
                                 ts
                                 latest))))))))))
 
+  ;; Return the latest `created` timestamp from .wip.scm lineage files only.
+  ;; This records when `bb add` was run, which is unique per staging even within
+  ;; a single `bb commit --all` batch (all committed files share the same timestamp).
+  ;; Returns #f if no wip lineage exists.
+  (define store-combiner-wip-timestamp
+    (lambda (root function-hash)
+      (let ((lineage-directory (store-path-join (store-combiner-directory root function-hash)
+                                     "lineage")))
+        (if (not (file-exists? lineage-directory))
+            #f
+            (let ((files (filter (lambda (f) (store-string-suffix? ".wip.scm" f))
+                                 (directory-list lineage-directory))))
+              (let loop ((remaining files) (latest #f))
+                (if (null? remaining)
+                    latest
+                    (let* ((record (call-with-input-file
+                                     (store-path-join lineage-directory (car remaining))
+                                     read))
+                           (ts (let ((c (assq 'created record))) (and c (cdr c)))))
+                      (loop (cdr remaining)
+                            (if (and ts (or (not latest) (string>? ts latest)))
+                                ts
+                                latest))))))))))
+
   ;; Scan the store and build a name→hash index.
   ;; Registers ALL language mappings for each combiner, so alternate-language
   ;; names (e.g. identidad, identite) resolve alongside the preferred-language name.
@@ -865,6 +892,16 @@
     (lambda (entry)
       (let ((ro (assq 'read-only (cdr entry))))
         (if ro (cdr ro) #f))))
+
+  (define store-remote-entry-api-key
+    (lambda (entry)
+      (let ((v (assoc 'api-key (cdr entry)))) (and v (cdr v)))))
+
+  (define store-remote-entry-mobius?
+    (lambda (entry)
+      (let ((url (store-remote-entry-url entry)))
+        (and (>= (string-length url) 9)
+             (string=? (substring url 0 9) "mobius://")))))
 
   ;; ================================================================
   ;; Cross-store Copy
