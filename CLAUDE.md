@@ -80,6 +80,28 @@ worklog/                — timestamped work entries
 - **De Bruijn normalization** erases variable names to positional indices (0 = self-reference). Same logic always produces the same SHA-256 hash regardless of naming language.
 - **Mappings** store human-readable names per language alongside the hash-addressed normalized tree.
 
+### Ref format
+
+A `<ref>` identifies a combiner (and optionally a specific mapping) in the store.
+The full form is `name@nid@lang@lid`; every trailing field is optional:
+
+```
+name              — name or hash, latest version
+name@nid          — disambiguate when the name is shared across hashes
+name@nid@lang     — also pin to a specific language
+name@nid@lang@lid — fully specified, including mapping hash
+```
+
+Fields:
+1. **name** — human-readable name _or_ a hash (full SHA-256, short minimum-unique
+   prefix, or any longer prefix). When multiple versions exist, the most recently
+   staged (committed timestamp first, then WIP timestamp) is selected.
+2. **nid** — combiner hash (full, short, or any unambiguous prefix) used as a
+   disambiguator when the same name maps to more than one combiner.
+3. **lang** — exact language code (2–4 alphabetic chars, e.g. `en`, `fr`, `kab`).
+4. **lid** — mapping hash (full, short, or any unambiguous prefix) that selects a
+   specific mapping entry for the chosen combiner and language.
+
 ## Critical constraints
 
 - **Never renumber primitives.** The `primitive-names` vector in `evaluator.scm` assigns permanent indices (0=gamma, 1=lambda, 2=xeno, ...). These indices are baked into stored combiner hashes. Only append new primitives at the end.

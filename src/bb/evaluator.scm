@@ -879,6 +879,8 @@
   ;; Initial environment with all 36 primitives
   ;; ================================================================
 
+  ;; it is missing exact->inexact and inexact->exact, possiblye round
+  ;; floor, ceil.
   (define primitive-names
     '#("gamma" "lambda" "xeno" "if" "and" "or" "begin" "define" "guard"
        "cons" "car" "cdr" "encapsulation-type" "box" "unbox" "box!"
