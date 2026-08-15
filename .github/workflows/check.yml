@@ -9,7 +9,43 @@ on:
     branches: [main]
 
 jobs:
+  # Tag pushes also match the `tags: [v*]` trigger above (so that
+  # release.yml's check-passed gate has something to find), which would
+  # otherwise re-run the full check every time an already-checked commit
+  # on main gets tagged. Skip that redundant run when a successful check
+  # already exists for the commit; push-to-main and pull_request runs
+  # are unaffected (this job only runs for tag pushes).
+  check-already-passed:
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-24.04
+    permissions:
+      actions: read
+    outputs:
+      skip: ${{ steps.query.outputs.skip }}
+    steps:
+      - name: Look for an existing successful check run on this commit
+        id: query
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          SHA="${{ github.sha }}"
+          COUNT=$(gh run list \
+            --repo "${{ github.repository }}" \
+            --workflow=check.yml \
+            --commit="$SHA" \
+            --status=success \
+            --limit=1 \
+            --json databaseId \
+            --jq 'length')
+          if [ "$COUNT" -ge 1 ]; then
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
+
   check:
+    needs: [check-already-passed]
+    if: always() && needs.check-already-passed.outputs.skip != 'true'
     runs-on: ubuntu-24.04
     permissions:
       contents: read
