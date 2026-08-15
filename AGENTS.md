@@ -27,6 +27,28 @@ The system-installed `scheme` (on PATH) is used only as the bootstrap compiler
 for building Chez from source. Programs run against the locally built Chez
 through the letloop binary, which carries its own boot image.
 
+### FFI dependencies
+
+transparenturing eagerly loads shared libraries (`liburing-ffi.so.2`,
+`libtls.so`). Build them from source:
+
+```bash
+make -C submodules/letloop dependencies
+```
+
+This builds liburing (2.14, with unreleased functions transparenturing needs),
+argon2, blake3, picohttpparser, sodium, oprf, and opaque into
+`submodules/letloop/local/lib/`. `libtls.so` must come from the system
+(`libtls-dev` package on Ubuntu).
+
+All letloop commands that import transparenturing (compile, check, exec,
+serve) must run with `LD_LIBRARY_PATH` pointing to the locally built
+libraries:
+
+```bash
+export LD_LIBRARY_PATH=$(pwd)/submodules/letloop/local/lib/
+```
+
 ## Running bb
 
 ### Interpreted (no compilation, for development)
