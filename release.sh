@@ -23,7 +23,6 @@ STAGE="$ROOT/dist/bb-$VERSION-$ARCH-linux"
 TARBALL="$ROOT/bb-$VERSION-$ARCH-linux.tar.gz"
 EXAMPLE="$ROOT/examples/counter/src/clicker-state.en.scm"
 EXAMPLE_HASH=8783a09eceee680d759f361a79aa151564d50505c57d4eea7f67f1455ad7a446
-DLOPEN_NAMES="liburing-ffi.so.2 libtls.so"
 
 log() { printf '==> %s\n' "$1"; }
 die() { printf 'release.sh: %s\n' "$1" >&2; exit 1; }
@@ -124,19 +123,24 @@ vendor_dlopen_name() {
   [ "$name" = "$soname" ] || ln -sf "$soname" "$STAGE/$name"
 }
 
-for name in $DLOPEN_NAMES; do vendor_dlopen_name "$name"; done
-
-# liburing-ffi.so.2 above came from the system ldconfig cache; if it was
-# actually built from source into $PREFIX (the "dependencies" target
-# above), prefer that copy and record git provenance instead of a deb.
+# liburing-ffi.so.2 is built from source by the "dependencies" step
+# above (submodules/letloop/makefile's `liburing:` target) and lands in
+# $PREFIX/lib — it is a loose build artifact, not registered with
+# ldconfig, so a clean host (a fresh CI runner has no liburing package
+# at all) resolves nothing for it via `ldconfig -p`. Prefer that
+# source-built copy directly when present, with git provenance; only
+# fall back to ldconfig -p (a system package) if it isn't there.
+# libtls.so, by contrast, always comes from the system libtls-dev
+# package, so ldconfig -p is the right — and only — source for it.
 if [ -e "$PREFIX/lib/liburing-ffi.so.2" ]; then
-  URING_REAL=$(realpath "$PREFIX/lib/liburing-ffi.so.2")
-  cp -L "$URING_REAL" "$STAGE/liburing-ffi.so.2"
-  set_rpath "$STAGE/liburing-ffi.so.2"
+  vendor_file "$(realpath "$PREFIX/lib/liburing-ffi.so.2")"
   URING_REV=$(git -C "$PREFIX/src/liburing" rev-parse HEAD 2>/dev/null || echo unknown)
   sed -i '\|^liburing-ffi\.so\.2 |d' "$MANIFEST"
   record liburing-ffi.so.2 "https://github.com/axboe/liburing @ $URING_REV"
+else
+  vendor_dlopen_name liburing-ffi.so.2
 fi
+vendor_dlopen_name libtls.so
 
 cp "$ROOT/a.out" "$STAGE/bb"
 set_rpath_bb "$STAGE/bb"
