@@ -21,7 +21,7 @@ jobs:
       - name: Install dependencies
         run: |
           sudo apt-get update -y
-          sudo apt-get install -y build-essential chezscheme uuid-dev liburing2
+          sudo apt-get install -y build-essential chezscheme uuid-dev
           sudo ln -sf /usr/bin/chezscheme /usr/local/bin/scheme
 
       - name: Get month
@@ -44,5 +44,8 @@ jobs:
       - name: Build letloop
         run: make -C submodules/letloop letloop SCHEME=$(pwd)/submodules/letloop/local/bin/scheme
 
+      - name: Build FFI dependencies
+        run: make -C submodules/letloop dependencies
+
       - name: Run checks
-        run: submodules/letloop/local/bin/letloop check src/ src/bb/cli.scm
+        run: LD_LIBRARY_PATH=$(pwd)/submodules/letloop/local/lib/ submodules/letloop/local/bin/letloop check src/ src/bb/cli.scm
