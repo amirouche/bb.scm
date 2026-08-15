@@ -21,7 +21,7 @@ jobs:
       - name: Install dependencies
         run: |
           sudo apt-get update -y
-          sudo apt-get install -y build-essential chezscheme uuid-dev
+          sudo apt-get install -y build-essential chezscheme uuid-dev liburing2
           sudo ln -sf /usr/bin/chezscheme /usr/local/bin/scheme
 
       - name: Get month
