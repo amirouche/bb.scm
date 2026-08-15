@@ -22,6 +22,7 @@
           (bb hash)
           (bb store)
           (bb http)
+          (bb server)
           (bb z3))
 
   ;; ================================================================
@@ -49,7 +50,7 @@
   ;;   bb remote publish <name> <ref> — mark ref public to <name>
   ;;   bb remote stop <name> <ref>    — stop publishing ref to <name>
   ;;   bb repl                        — interactive Seed session
-  ;;   bb serve [--port N] [--api-key K] <app-ref> <handler-ref> — serve over HTTP
+  ;;   bb serve [--port N] [--api-key K] <app-state-ref> <handler-ref> — serve over HTTP
   ;;   bb store init                  — create new mobius-store
   ;;   bb store info                  — show store statistics
   ;;   bb status                      — show working state
@@ -97,7 +98,7 @@
       (display "  bb review <ref>                         Mark combiner as reviewed\n")
       (display "  bb run <ref> [args...]                  Evaluate a registered combiner\n")
       (display "  bb search <query>                       Search combiner names and content\n")
-      (display "  bb serve [--port N] [--api-key K] <app-ref> <handler-ref>\n")
+      (display "  bb serve [--port N] [--api-key K] <app-state-ref> <handler-ref>\n")
       (display "                                          Serve over HTTP\n")
       (display "  bb show <ref>                           Display combiner doc and definition\n")
       (display "  bb status                               Show working state\n")
@@ -3713,28 +3714,13 @@
              (root         (store-find-root (current-directory)))
              (name-index   (store-build-name-index root))
              (app-hash     (let-values (((h _l _m) (resolve-ref name-index root app-ref))) h))
-             (handler-hash (let-values (((h _l _m) (resolve-ref name-index root handler-ref))) h))
-             (libdirs      (apply string-append
-                                  (map (lambda (pair)
-                                         (string-append " --libdirs " (car pair)))
-                                       (library-directories))))
-             (tmp          (string-append "/tmp/bb-serve-" (number->string (random 1000000000)) ".scm"))
-             (script       (with-output-to-string
-                             (lambda ()
-                               (write `(begin
-                                         (import (bb server))
-                                         (server-start! ,root ,port ,api-key
-                                                        ,app-hash ,handler-hash)))))))
+             (handler-hash (let-values (((h _l _m) (resolve-ref name-index root handler-ref))) h)))
         (display "bb serve: store at ")
         (display root)
         (display ", port ")
         (display port)
         (newline)
-        (call-with-port
-          (open-file-output-port tmp (file-options replace) (buffer-mode block))
-          (lambda (p) (put-bytevector p (string->utf8 script))))
-        (system (string-append "scheme --quiet" libdirs " < " tmp))
-        (delete-file tmp))))
+        (server-start! root port api-key app-hash handler-hash))))
 
   ;; ================================================================
   ;; Main entry point
