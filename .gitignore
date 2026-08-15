@@ -7,3 +7,10 @@
 *.scm~
 *.scm#*
 .#*.scm
+
+# letloop compile output
+a.out
+a.out.boot
+
+# locally built Chez Scheme and letloop binary
+submodules/letloop/local/
