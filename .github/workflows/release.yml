@@ -21,6 +21,7 @@ jobs:
         run: |
           SHA="${{ github.sha }}"
           RESULT=$(gh run list \
+            --repo "${{ github.repository }}" \
             --workflow=check.yml \
             --commit="$SHA" \
             --status=success \
