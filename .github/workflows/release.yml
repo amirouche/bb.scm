@@ -51,7 +51,19 @@ jobs:
           sudo apt-get install -y build-essential chezscheme uuid-dev
           sudo ln -sf /usr/bin/chezscheme /usr/local/bin/scheme
 
+      - name: Get month
+        id: date
+        run: echo "month=$(date -u +%Y-%m)" >> "$GITHUB_OUTPUT"
+
+      - name: Cache Chez Scheme build
+        id: cache-chez
+        uses: actions/cache@v4
+        with:
+          path: submodules/letloop/local/
+          key: chezscheme-${{ runner.os }}-${{ runner.arch }}-${{ steps.date.outputs.month }}
+
       - name: Build Chez Scheme
+        if: steps.cache-chez.outputs.cache-hit != 'true'
         run: make -C submodules/letloop chezscheme SCHEME=$(which scheme)
 
       - name: Build letloop
