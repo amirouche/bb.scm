@@ -31,12 +31,15 @@ need() { command -v "$1" >/dev/null 2>&1 || die "missing required tool: $1"; }
 need patchelf; need ldconfig; need dpkg; need sha256sum; need git; need tar; need od; need awk
 
 log "building chez/letloop toolchain and FFI dependencies (skip steps already done)"
-# `make chezscheme` is not idempotent — it unconditionally `rm -rf`s and
-# rebuilds from source (~5-15 min) — so guard it ourselves the way the
-# other targets here already guard themselves (see e.g. `liburing:` in
-# submodules/letloop/makefile, which skips if its output already exists).
+# `make chezscheme` and `make letloop` are not idempotent — chezscheme
+# unconditionally rebuilds from source (~5-15 min), and letloop's own
+# target depends on `clean`, so it always wipes and recompiles too — so
+# guard both ourselves the way the *other* targets here already guard
+# themselves (see e.g. `liburing:` in submodules/letloop/makefile, which
+# skips if its output already exists — `make dependencies` below is
+# fast/idempotent for exactly that reason, no guard needed for it).
 [ -x "$PREFIX/bin/scheme" ] || make -C "$LETLOOP" chezscheme SCHEME="$(command -v scheme)"
-make -C "$LETLOOP" letloop SCHEME="$PREFIX/bin/scheme"
+[ -x "$PREFIX/bin/letloop" ] || make -C "$LETLOOP" letloop SCHEME="$PREFIX/bin/scheme"
 make -C "$LETLOOP" dependencies
 
 log "compiling bb"

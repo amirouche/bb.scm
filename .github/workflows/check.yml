@@ -64,20 +64,21 @@ jobs:
         id: date
         run: echo "month=$(date -u +%Y-%m)" >> "$GITHUB_OUTPUT"
 
-      - name: Cache Chez Scheme build
-        id: cache-chez
+      - name: Cache letloop toolchain (chezscheme + letloop + FFI deps)
+        id: cache-toolchain
         uses: actions/cache@v4
         with:
           path: submodules/letloop/local/
-          key: chezscheme-${{ runner.os }}-${{ runner.arch }}-${{ steps.date.outputs.month }}
+          key: letloop-toolchain-${{ runner.os }}-${{ runner.arch }}-${{ steps.date.outputs.month }}
           restore-keys: |
-            chezscheme-${{ runner.os }}-${{ runner.arch }}-
+            letloop-toolchain-${{ runner.os }}-${{ runner.arch }}-
 
       - name: Build Chez Scheme
-        if: steps.cache-chez.outputs.cache-hit != 'true'
+        if: steps.cache-toolchain.outputs.cache-hit != 'true'
         run: make -C submodules/letloop chezscheme SCHEME=$(which scheme)
 
       - name: Build letloop
+        if: steps.cache-toolchain.outputs.cache-hit != 'true'
         run: make -C submodules/letloop letloop SCHEME=$(pwd)/submodules/letloop/local/bin/scheme
 
       - name: Build FFI dependencies
