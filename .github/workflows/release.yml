@@ -80,8 +80,8 @@ jobs:
 
       - name: Verify
         run: |
-          ./a.out --version
-          ./a.out eval '(+ 1 2)'
+          LD_LIBRARY_PATH=$(pwd)/submodules/letloop/local/lib/ ./a.out --version
+          LD_LIBRARY_PATH=$(pwd)/submodules/letloop/local/lib/ ./a.out eval '(+ 1 2)'
 
       - name: Package
         run: |
