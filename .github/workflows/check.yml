@@ -48,4 +48,4 @@ jobs:
         run: make -C submodules/letloop dependencies
 
       - name: Run checks
-        run: LD_LIBRARY_PATH=$(pwd)/submodules/letloop/local/lib/ submodules/letloop/local/bin/letloop check src/ src/bb/cli.scm
+        run: LD_LIBRARY_PATH=$(pwd)/submodules/letloop/local/lib/ submodules/letloop/local/bin/letloop check src/ src/
