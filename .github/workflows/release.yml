@@ -49,7 +49,7 @@ jobs:
       - name: Install dependencies
         run: |
           sudo apt-get update -y
-          sudo apt-get install -y build-essential chezscheme uuid-dev libtls-dev
+          sudo apt-get install -y build-essential chezscheme uuid-dev libtls-dev patchelf bubblewrap
           sudo ln -sf /usr/bin/chezscheme /usr/local/bin/scheme
 
       - name: Get month
@@ -65,36 +65,21 @@ jobs:
           restore-keys: |
             chezscheme-${{ runner.os }}-${{ runner.arch }}-
 
-      - name: Build Chez Scheme
-        if: steps.cache-chez.outputs.cache-hit != 'true'
-        run: make -C submodules/letloop chezscheme SCHEME=$(which scheme)
+      - name: Build relocatable release tarball
+        env:
+          VERSION: ${{ github.ref_name }}
+        run: make tarball
 
-      - name: Build letloop
-        run: make -C submodules/letloop letloop SCHEME=$(pwd)/submodules/letloop/local/bin/scheme
-
-      - name: Build FFI dependencies
-        run: make -C submodules/letloop dependencies
-
-      - name: Compile bb
-        run: LD_LIBRARY_PATH=$(pwd)/submodules/letloop/local/lib/ submodules/letloop/local/bin/letloop compile --visible-libraries src/ src/bb/cli.scm main
-
-      - name: Verify
-        run: |
-          LD_LIBRARY_PATH=$(pwd)/submodules/letloop/local/lib/ ./a.out --version
-          LD_LIBRARY_PATH=$(pwd)/submodules/letloop/local/lib/ ./a.out eval '(+ 1 2)'
-
-      - name: Package
-        run: |
-          cp a.out bb-linux-amd64
-          sha256sum bb-linux-amd64 > bb-linux-amd64.sha256
+      - name: Acceptance test (extract to an arbitrary path, no system liburing/libtls)
+        run: make tarball-check
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: bb-linux-amd64
+          name: bb-${{ github.ref_name }}-x86_64-linux
           path: |
-            bb-linux-amd64
-            bb-linux-amd64.sha256
+            bb-${{ github.ref_name }}-x86_64-linux.tar.gz
+            bb-${{ github.ref_name }}-x86_64-linux.tar.gz.sha256
 
   release:
     needs: build
@@ -115,5 +100,5 @@ jobs:
         with:
           draft: true
           files: |
-            artifacts/bb-linux-amd64
-            artifacts/bb-linux-amd64.sha256
+            artifacts/bb-${{ github.ref_name }}-x86_64-linux.tar.gz
+            artifacts/bb-${{ github.ref_name }}-x86_64-linux.tar.gz.sha256
