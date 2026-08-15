@@ -3202,7 +3202,7 @@
           (define app-state (application))
           (call-with-values (lambda () (loop-tcp-serve "0.0.0.0" port-number))
             (lambda (accept close)
-              (format #t "transparent server at http://127.0.0.1:~a/\n" port-number)
+              (format #t "transparent server at http://0.0.0.0:~a/\n" port-number)
               (flush-output-port)
               (let loop ()
                 (when (loop-running? %loop)
