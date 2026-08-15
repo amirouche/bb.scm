@@ -61,6 +61,8 @@ jobs:
         with:
           path: submodules/letloop/local/
           key: chezscheme-${{ runner.os }}-${{ runner.arch }}-${{ steps.date.outputs.month }}
+          restore-keys: |
+            chezscheme-${{ runner.os }}-${{ runner.arch }}-
 
       - name: Build Chez Scheme
         if: steps.cache-chez.outputs.cache-hit != 'true'
