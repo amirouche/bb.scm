@@ -6,7 +6,37 @@ on:
       - 'v*'
 
 jobs:
+  check-passed:
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      actions: read
+    outputs:
+      passed: ${{ steps.verify.outputs.passed }}
+    steps:
+      - name: Verify Check workflow passed on this commit
+        id: verify
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          SHA="${{ github.sha }}"
+          RESULT=$(gh run list \
+            --workflow=check.yml \
+            --commit="$SHA" \
+            --status=success \
+            --limit=1 \
+            --json databaseId \
+            --jq 'length')
+          if [ "$RESULT" = "1" ]; then
+            echo "passed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "passed=false" >> "$GITHUB_OUTPUT"
+            echo "::error::Check workflow did not pass on commit $SHA"
+            exit 1
+          fi
+
   build:
+    needs: check-passed
     runs-on: ubuntu-24.04
     permissions:
       contents: read

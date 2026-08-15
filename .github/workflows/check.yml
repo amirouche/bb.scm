@@ -1,0 +1,34 @@
+name: Check
+
+on:
+  push:
+    branches: [main]
+    tags:
+      - 'v*'
+  pull_request:
+    branches: [main]
+
+jobs:
+  check:
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: true
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update -y
+          sudo apt-get install -y build-essential chezscheme uuid-dev
+          sudo ln -sf /usr/bin/chezscheme /usr/local/bin/scheme
+
+      - name: Build Chez Scheme
+        run: make -C submodules/letloop chezscheme SCHEME=$(which scheme)
+
+      - name: Build letloop
+        run: make -C submodules/letloop letloop SCHEME=$(which scheme)
+
+      - name: Run checks
+        run: submodules/letloop/local/bin/letloop check src/ src/bb/cli.scm
