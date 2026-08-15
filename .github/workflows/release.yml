@@ -70,6 +70,9 @@ jobs:
           VERSION: ${{ github.ref_name }}
         run: make tarball
 
+      - name: Allow unprivileged user namespaces (bwrap needs this on 24.04)
+        run: sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0 || true
+
       - name: Acceptance test (extract to an arbitrary path, no system liburing/libtls)
         run: make tarball-check
 
