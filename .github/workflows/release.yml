@@ -69,7 +69,7 @@ jobs:
         run: make -C submodules/letloop chezscheme SCHEME=$(which scheme)
 
       - name: Build letloop
-        run: make -C submodules/letloop letloop SCHEME=$(which scheme)
+        run: make -C submodules/letloop letloop SCHEME=$(pwd)/submodules/letloop/local/bin/scheme
 
       - name: Compile bb
         run: submodules/letloop/local/bin/letloop compile --visible-libraries src/ src/bb/cli.scm main
