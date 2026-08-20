@@ -110,7 +110,7 @@ Chez Scheme is the only dependency (`chezscheme` on Debian/Ubuntu; `chez-scheme`
 sudo apt install chezscheme
 
 git clone https://github.com/amirouche/bb.scm
-cd bb.scm/north
+cd bb.scm
 ./bb repl
 ```
 
