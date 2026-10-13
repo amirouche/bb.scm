@@ -49,6 +49,64 @@ AWA0002 (worklog author), AWA0004 (reader diagnostics an agent can act
 on), AWA0005 (store-aware eval so agents can probe committed
 combiners).
 
+### Distance from the software-factory aspiration
+
+The field (Factory 2.0, StrongDM, Cursor's swarm, Gas Town, Anthropic's
+Managed Agents) is converging on a software factory in the industrial
+sense: signals from the world (tickets, incidents, feedback, a spec)
+turned into shipped, tested, deployed software with no human between
+intent and artifact; thousands of agents in parallel in disposable
+containers; output verified by tests, adversarial checkers and LLM
+judges rather than human review; self-improvement by observing its own
+runs; priced in tokens and session-hours against the salary it
+replaces. The human writes the specification upstream and rules on
+escalations downstream; the code becomes an opaque intermediate to be
+regenerated rather than read; success is throughput of accepted changes
+per dollar, not comprehension, attribution or anyone's ability to take
+the result over later.
+
+Where the current work already matches:
+
+- Intent to artifact without a human writing code: the turtle and
+  multiagent runs took a spec, produced contracts, and had agents add,
+  check and commit combiners nobody read line by line. This task moves
+  the signal source from a terminal prompt to a form.
+- Verification by tests rather than review: checks are the interface;
+  the sanity rule (pass on reference, fail on mutant) is an adversarial
+  checker in miniature; races were arbitrated by `bb check`.
+- Parallel agents with no merge step: five agents in one store, no
+  branches, no locks, set-union integration.
+- Rulings as escalations: the `duration-parse` and `turtle-parse` ties
+  were surfaced and ruled on stated grounds.
+
+Where it is far:
+
+- Scale: five agents, 53 combiners, one run; nothing schedules,
+  supervises or retries agents; the orchestrator was a human-driven
+  session.
+- No closed loop: no signal source (tickets, incidents), no deploy
+  step, no feedback from running software into new tasks.
+- No LLM judges: arbitration is exhaustive or bounded checks plus a
+  human; the equivalence table in `examples/multiagent/README.md`
+  stops at carrying certificates rather than deciding.
+- No self-improvement: findings became AGENTS.md rules by hand; nothing
+  reads the worklog to change the next run.
+- No cost model: nothing measures tokens or session-hours per accepted
+  change.
+- Tooling friction that blocks unattended runs: AWA0002 (worklog
+  author), AWA0004 (reader diagnostics), AWA0005 (store-aware eval).
+
+Where it parts ways on purpose: the factory treats code as an opaque
+intermediate and measures accepted changes per dollar; Möbius treats
+the artifact as what must stay legible, attributed and takeoverable.
+Every clause of this task that costs effort is on that side: the author
+chain with who asked, checks rendered as sentences, data as
+derivations, losers kept with lineage, federation as set union. A
+factory would delete the losing `turtle-parse` tree; this store keeps
+it and says who made it. The distance is one order of magnitude of
+scale and one closed loop (unattended orchestrator, signal source,
+deploy target), not a missing idea.
+
 ## Description
 
 The shell is itself a combiner DAG built with the workflow it hosts:
