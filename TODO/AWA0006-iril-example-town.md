@@ -20,6 +20,20 @@ store underneath is plain Möbius and can federate later or never.
 
 ## Context
 
+TL;DR: the `examples/multiagent` and `examples/turtle` runs already
+proved the novel part — many authors, one store, checks as contracts,
+races and rulings, set-union reuse — and every clause of the vision
+maps onto an exercised bb feature with only small gaps left (per-member
+login, rendered checks, data trees, a ties page). Benchmarked against
+the industrial software-factory stack, bb matches on intent-to-
+artifact, test-based verification, parallel agents and escalated
+rulings, and deliberately parts ways on legibility, attribution and
+takeoverability; it is behind on scale, closed loop, self-improvement
+and cost model. Four steps (seed ownership rule, per-combiner `xeno`
+allowlist, Chez engines for fuel, orchestrator-as-operatives) would
+make the factory-vs-bb comparison measurable instead of a design
+argument.
+
 `examples/multiagent` and `examples/turtle` proved the part of this that
 is novel: several authors growing one checkable family of combiners in
 one store, with no merge step, contracts committed before
