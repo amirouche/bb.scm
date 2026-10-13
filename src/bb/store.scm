@@ -34,6 +34,7 @@
           store-combiner-tree-path
           store-mapping-path
           store-config-author
+          store-current-author
           store-path-join
           store-ensure-directory
           store-string-suffix?
@@ -380,6 +381,17 @@
                   (cdr name-entry)
                   (error 'store-config-author "no author.name in config")))
             (error 'store-config-author "no author in config")))))
+
+  ;; Author identity for the current process. The BB_AUTHOR environment
+  ;; variable overrides the store configuration, so that multiple agents
+  ;; working in the same store can record distinct identities in their
+  ;; lineage records.
+  (define store-current-author
+    (lambda (root)
+      (let ((override (getenv "BB_AUTHOR")))
+        (if (and override (not (string=? override "")))
+            override
+            (store-config-author root)))))
 
   (define store-config-languages
     (lambda (root)

@@ -32,7 +32,7 @@
   ;;   bb run (name|hash) [args...]   — evaluate a combiner
   ;;   bb add name file               — parse, store, bind (wip)
   ;;   bb add --check <combiner> <check> — register check for combiner
-  ;;   bb commit [name... | --all]    — promote wip to committed
+  ;;   bb commit [name... | --all | --mine] — promote wip to committed (--mine: only mine)
   ;;   bb edit (name|hash)            — open in $EDITOR, re-add on save
   ;;   bb diff name1 name2            — structural comparison
   ;;   bb refactor root old new [at]  — propagate hash changes
@@ -75,7 +75,7 @@
       (display "  bb anchor <ref>                         Request or upgrade OpenTimestamps proof\n")
       (display "  bb caller <ref>                         Show reverse dependency DAG\n")
       (display "  bb check <ref>                          Run all checks for ref and its dependencies\n")
-      (display "  bb commit [<ref>... | --all]            Promote staged combiners to committed\n")
+      (display "  bb commit [<ref>... | --all | --mine]   Promote staged combiners to committed\n")
       (display "  bb diff <ref> <ref>                     Compare two combiners (pretty-printed diff)\n")
       (display "  bb edit <ref> [lang]                    Edit combiner in $EDITOR, re-add on save\n")
       (display "  bb eval <expression>                    Evaluate a single expression\n")
@@ -542,7 +542,7 @@
                  (check-hash
                   (let-values (((h l m) (resolve-ref name-index root check-ref))) h))
                  (existing-checks (store-load-checks root combiner-hash))
-                 (author (store-config-author root)))
+                 (author (store-current-author root)))
             (if (member check-hash existing-checks)
                 (begin
                   (display "already registered: ")
@@ -621,7 +621,7 @@
         (let ((environment (load-index-into-env name-index root environment)))
           ;; Parse expressions
           (let* ((expressions (mobius-read-all-string source))
-                 (author (store-config-author root))
+                 (author (store-current-author root))
                  (name-lookup (make-name-lookup name-index root)))
             ;; Evaluate to verify correctness
             (let-values (((final-environment last-value)
@@ -1689,7 +1689,7 @@
                      (doc (source-extract-doc source))
                      (environment (install-base-library (make-initial-environment)))
                      (environment (load-index-into-env name-index root environment))
-                     (author (store-config-author root))
+                     (author (store-current-author root))
                      (name-lookup (make-name-lookup name-index root)))
                 (let-values (((main-defines check-defines) (classify-defines expressions)))
                   ;; Evaluate
@@ -1891,13 +1891,17 @@
     (lambda (arguments)
       (let* ((root (store-find-root (current-directory)))
              (name-index (store-build-name-index root))
-             (author (store-config-author root))
-             (names (if (and (not (null? arguments))
-                             (string=? (car arguments) "--all"))
-                        (map car name-index)
-                        arguments)))
+             (author (store-current-author root))
+             (mine? (and (member "--mine" arguments) #t))
+             (args (filter (lambda (a) (not (string=? a "--mine"))) arguments))
+             (names (cond
+                      ((and (not (null? args)) (string=? (car args) "--all"))
+                       (map car name-index))
+                      ((and mine? (null? args))
+                       (map car name-index))
+                      (else args))))
         (when (null? names)
-          (display "bb commit: specify names or --all\n" (current-error-port))
+          (display "bb commit: specify names, --all or --mine\n" (current-error-port))
           (exit 1))
         (let ((count 0))
           (for-each
@@ -1928,6 +1932,16 @@
                                             (not (assq 'checks b)))))))
                                  (map (lambda (f) (load-lineage-record root fhash f))
                                       wip-files)))
+                          ;; --mine: keep only records authored by the current
+                          ;; identity ($BB_AUTHOR or store config), so an agent
+                          ;; never promotes a peer's in-flight work.
+                          (wip-records-asc
+                           (if mine?
+                               (filter (lambda (r)
+                                         (let ((a (assq 'author r)))
+                                           (and a (string=? (cdr a) author))))
+                                       wip-records-asc)
+                               wip-records-asc))
                           (retract-records
                            (filter (lambda (r)
                                      (let ((rel (assq 'relation r)))
@@ -2013,12 +2027,21 @@
                        (display "  committed: ")
                        (display name)
                        (newline))
-                     ;; Delete wip files now that they have been promoted.
+                     ;; Delete the wip files this commit consumed: all
+                     ;; staged files, or under --mine only those authored
+                     ;; by the current identity, so a peer's in-flight
+                     ;; records remain staged.
                      (for-each
                       (lambda (f)
                         (delete-file
                          (store-path-join (store-combiner-directory root fhash) "lineage" f)))
-                      wip-files))
+                      (if mine?
+                          (filter (lambda (f)
+                                    (let ((a (assq 'author
+                                                   (load-lineage-record root fhash f))))
+                                      (and a (string=? (cdr a) author))))
+                                  wip-files)
+                          wip-files)))
                    (begin
                      (display "  unknown: ")
                      (display name)
@@ -2481,7 +2504,7 @@
              (new-hash (let-values (((h l m) (resolve-ref name-index store-root new-name))) h))
              (at-hash (and at-name
                            (let-values (((h l m) (resolve-ref name-index store-root at-name))) h)))
-             (author (store-config-author store-root)))
+             (author (store-current-author store-root)))
         ;; Use a worklist for cascading updates
         ;; If <at> is given, only replace in that specific combiner
         ;; Otherwise replace in all combiners within the root tree
@@ -2563,7 +2586,7 @@
         (exit 1))
       (let* ((root (store-find-root (current-directory)))
              (name-index (store-build-name-index root))
-             (author (store-config-author root)))
+             (author (store-current-author root)))
         (for-each
          (lambda (name)
            (let ((hash (let-values (((h l m) (resolve-ref name-index root name))) h)))
@@ -2952,7 +2975,7 @@
              (ref (cadr rest)))
         (resolve-remote-or-die root remote-name "publish")
         (let* ((name-index (store-build-name-index root))
-               (author (store-config-author root))
+               (author (store-current-author root))
                (hash->name (make-hash->name name-index root))
                (short-hash (store-make-short-hash (store-list-all-stored-hashes root))))
           (let-values (((target-hash _l _m) (resolve-ref name-index root ref)))
