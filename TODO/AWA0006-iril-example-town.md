@@ -107,6 +107,91 @@ it and says who made it. The distance is one order of magnitude of
 scale and one closed loop (unattended orchestrator, signal source,
 deploy target), not a missing idea.
 
+### bb + seed against the factory stack
+
+The factory stack is nearly identical everywhere: a frontier model over
+a cloud API, a harness giving it a Linux container with bash, read,
+write, edit, grep and MCP; an orchestrator (Claude Code subagents,
+Codex, LangGraph, CrewAI, Gas Town's Go and tmux, Fabrika's Python
+state machine) spawning workers into git worktrees or microVM sandboxes
+(E2B, Modal, Daytona, Docker) and merging diffs through a queue; git
+and GitHub as substrate for state, identity and output, PRs as the unit
+of work, AGENTS.md as the instruction file; tests, linters and type
+checkers as oracle, sometimes a second model as judge; trace stores
+keyed by run ID; written in Python, TypeScript or Go, priced per token.
+The primitives: a prompt, a tool call, a diff, a test result, a commit,
+a loop.
+
+bb plus seed (Kernel-style `vau` with an immutable dynamic environment,
+as a Chez extension; https://github.com/amirouche/seed) makes the same
+moves with the boundary in different places:
+
+| Primitive | Factory | bb + seed |
+|---|---|---|
+| substrate | git + GitHub | content-addressed store; identity is the hash |
+| unit of work | PR (diff against files) | combiner + check suite |
+| merge | diff queue | set union; same logic converges, different logic coexists |
+| isolation | worktree / container / microVM | first-class environment per procedure; Chez engines for fuel |
+| tools | bash, read, write, edit, grep | add, check, commit, caller, tree, search; `xeno` as escape hatch |
+| oracle | tests, linters, type checkers, LLM judge | `bb check`, Z3, bounded equivalence certificates; no LLM judge |
+| observability | traces keyed by run ID, ephemeral | lineage + worklog keyed by hash, permanent |
+| orchestrator | state machines, tmux | none yet; a human-driven session |
+| languages | Python/TS/Go targeting Python/TS/Java | Scheme targeting Möbius; models are far less fluent |
+
+Two honest caveats. seed's ownership rule ("borrowed environments are
+read-only") is still a TODO in its repo: interpreted code mutates the
+caller's alist, compiled code does not. And bb's `xeno` is `eval` of a
+symbol in Chez's full top-level environment (`evaluator.scm`, primitive
+2), so today it is as unrestricted as the factory's bash. Language-level
+sandboxing never isolates memory, filesystem or network either; a
+hostile model still needs OS isolation around the process. The win is
+granularity inside the trust boundary, not replacing it.
+
+Until the items below land, every advantage in the table is a design
+argument, not a measurement.
+
+### Four steps to make the comparison measurable
+
+1. **Enforce seed's ownership rule** so the sandbox claim is an
+   invariant in both compiled and interpreted modes (seed
+   `src/src/seed3/TODO.md`). Before this, a mis-nested or malicious
+   combiner can poison the shared environment.
+2. **Resolve `xeno` against an allowlisted environment per combiner**,
+   not Chez's top level. A combiner's hash then determines which host
+   procedures it can reach; "what can this code do" becomes answerable
+   from the store.
+3. **Wrap agent evaluation in Chez engines** for fuel and timeouts.
+   A runaway product is cut off deterministically, and a check can
+   state a resource bound ("passes within N steps").
+4. **Write the orchestrator as operatives**, stored as combiners with
+   hash, author and checks. A run then replays from the store alone.
+   This is the first combiner of the iril.example factory.
+
+Sequence: 1 and 2 are audit work on existing code, 3 is small once 2
+is done, 4 is the real build.
+
+### Benchmark
+
+With all four in place, one `bb` process can run the turtle task
+unattended: N agent evaluations, each in its own environment with its
+own fuel and allowlist, promoted by `commit --mine`, the orchestrator's
+own lineage recording the run. No containers, no worktrees, no merge
+queue. Then run the same spec (`examples/turtle`) through the factory
+stack (Claude Code subagents in worktrees, tests as oracle) and
+through bb, and measure:
+
+| Measure | Factory | bb |
+|---|---|---|
+| tokens per accepted PR or combiner | | |
+| wall time to a passing closure | | |
+| cost of isolation per agent | one container | one environment |
+| what survives the run | diffs and traces | hashes, lineage, checks, losers |
+
+The first two rows are where the factory likely wins (model fluency in
+Python). The last two are where bb wins by construction. The size of
+the first gap is the number that decides whether the thesis is
+practical or only correct.
+
 ## Description
 
 The shell is itself a combiner DAG built with the workflow it hosts:
