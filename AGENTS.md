@@ -103,6 +103,58 @@ submodules/letloop/local/bin/letloop exec --dev src/ src/bb/cli.scm main -- eval
 - `submodules/letloop/local/` — the locally built Chez Scheme, letloop binary,
   and cached libraries.
 
+## Multi-agent workflow
+
+Multiple agents may work in the same store, in the same directory, without
+coordination. The rules below divide into what the platform enforces (the
+store makes them unbreakable) and what remains discipline.
+
+### Identity
+
+- Set `BB_AUTHOR` to a distinct identity for each agent sharing one store.
+  Every lineage record, worklog entry, and review carries it. Without it,
+  per-agent semantics are vacuous (one `config.scm` author for everyone).
+- Never coordinate on names. Names are presentation; identity is the hash of
+  the normalized tree. Same logic converges to the same SHA-256 and dedupes
+  (a re-add becomes a mapping/translation); different logic under the same
+  name coexists as `name@hashA` / `name@hashB`.
+
+### Planning
+
+- Plan the DAG, not the files: one define per combiner; dependencies must be
+  added before dependents (the store enforces this — `bb add` fails with
+  `unbound variable` otherwise). Mutual recursion across combiners is
+  therefore impossible; the graph is a DAG by construction.
+- The contract between agents is a check suite (`bb add --check`), not a
+  name, not a file. A node without checks has no interface.
+- Assign a node only once its dependencies are committed. Task = "produce a
+  combiner that passes checks X, depending only on hashes H1..Hn".
+
+### Authoring
+
+- Check what exists first (`bb search`, `bb tree`); don't re-solve.
+- Stored combiners may only reference primitives, `xeno`, and previously
+  committed combiners — base-library names (`not`, `list`, ...) do not
+  resolve at normalization time.
+- Small combiners; `bb caller` measures any change's blast radius.
+
+### Promotion
+
+- Each agent commits only their own work: `BB_AUTHOR=<me> bb commit --mine`.
+  `--all` sweeps every staged record including peers' in-flight work; it is
+  for single-agent stores or a deliberate, announced integrator pass.
+
+### Integration
+
+- Merging is `remote pull` — a set union of immutable objects. There is no
+  merge step to perform. Alternatives are arbitrated by `bb check`, not by
+  discussion.
+- An upstream change produces a new hash; `bb caller` lists every dependent
+  that must be re-added against it. That list is the re-tasking queue —
+  assign it, don't negotiate it.
+- Serialize the mutable edges: `config.scm`, `bb remote add`, `published/`.
+  These are the only genuinely shared mutable files.
+
 ## Conventions
 
 Use [conventional commits](https://www.conventionalcommits.org/) for all
