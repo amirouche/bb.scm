@@ -148,6 +148,16 @@ store makes them unbreakable) and what remains discipline.
 - Each agent commits only their own work: `BB_AUTHOR=<me> bb commit --mine`.
   `--all` sweeps every staged record including peers' in-flight work; it is
   for single-agent stores or a deliberate, announced integrator pass.
+- After `bb commit --mine`, the agent records a worklog entry on every
+  committed combiner describing itself, the task, and the outcome:
+  `bb worklog <ref> "author: <me> | task: <assigned task, in one sentence> |
+  done: <what was achieved, incl. checks passed>"`. Worklog entries do not
+  record `BB_AUTHOR` — the entry only stores combiner, message, timestamp —
+  so the identity must be stated in the message text. The automatic entry
+  written by `bb commit` ("committed <name> (<relation>)") says what
+  happened, not who did it or why; without the follow-up entry, a peer
+  reading the store cannot tell agents apart in the worklog or reconstruct
+  which task a combiner was produced for.
 
 ### Integration
 
