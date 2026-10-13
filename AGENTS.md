@@ -111,7 +111,11 @@ store makes them unbreakable) and what remains discipline.
 
 ### Identity
 
-- Set `BB_AUTHOR` to a distinct identity for each agent sharing one store.
+- Set `BB_AUTHOR` to a distinct identity for each agent sharing one store —
+  from the very first command, every `bb add` included. Records staged
+  without it carry the empty `config.scm` author, and a later
+  `BB_AUTHOR=<me> bb commit --mine` will not match them; the turtle run had
+  to re-add its whole contract set to repair identity staged without it.
   Every lineage record, worklog entry, and review carries it. Without it,
   per-agent semantics are vacuous (one `config.scm` author for everyone).
 - Never coordinate on names. Names are presentation; identity is the hash of
@@ -129,6 +133,11 @@ store makes them unbreakable) and what remains discipline.
   name, not a file. A node without checks has no interface.
 - Assign a node only once its dependencies are committed. Task = "produce a
   combiner that passes checks X, depending only on hashes H1..Hn".
+- Sanity-test a check suite before assigning it: every check must PASS
+  against a reference implementation and FAIL against a mutant, in a scratch
+  store outside the shared one. A check that cannot fail is not a contract.
+  Pin values, not substrings — `string-contains?`-style asserts pass on
+  accidental superstrings (`notaviewBox` contains `viewBox`).
 
 ### Authoring
 
@@ -136,6 +145,16 @@ store makes them unbreakable) and what remains discipline.
 - Stored combiners may only reference primitives, `xeno`, and previously
   committed combiners — base-library names (`not`, `list`, ...) do not
   resolve at normalization time.
+- Internal defines at the top of a lambda body work, including recursive and
+  mutually recursive ones (verified in the turtle run). They are the escape
+  hatch from the no-mutual-recursion rule: keep nesting, repeat expansion,
+  and stack walks inside a single combiner; the inter-combiner graph stays
+  a DAG.
+- Normalize does not catch structural mis-nesting: a form closed in the
+  wrong place reads, normalizes, and stages cleanly, and only fails
+  behaviorally at `bb check`. Paren-balance checks are insufficient —
+  treat `bb check` as the only real gate and debug behavior, not source
+  layout.
 - Small combiners; `bb caller` measures any change's blast radius.
 - Racing the same combiner name between agents: the store keeps both
   identities (`name@hashA` / `name@hashB`), but the flat source file is
@@ -159,6 +178,14 @@ store makes them unbreakable) and what remains discipline.
   reading the store cannot tell agents apart in the worklog or reconstruct
   which task a combiner was produced for.
 
+- Never leave a broken version staged next to its fix. A batched
+  `bb commit --mine` gives every promoted record the same committed
+  timestamp, and same-name trees then resolve by hash order — which can
+  pick the superseded tree (observed with `turtle-run@697123` over
+  `turtle-run@8fde4d`). After any same-name commit, re-verify with
+  `bb check <name>`; if resolution is wrong, re-add the good source and
+  commit again.
+
 ### Integration
 
 - Merging is `remote pull` — a set union of immutable objects. There is no
@@ -169,6 +196,20 @@ store makes them unbreakable) and what remains discipline.
   assign it, don't negotiate it.
 - Serialize the mutable edges: `config.scm`, `bb remote add`, `published/`.
   These are the only genuinely shared mutable files.
+
+### Tooling pitfalls
+
+These cost real debugging time in the recorded runs; work around them until
+the platform fixes land (see `TODO/AWA0004`, `TODO/AWA0005`).
+
+- The example launcher scripts wrap each argument in double quotes without
+  escaping, so a literal `"` inside a `bb eval` expression breaks the reader.
+  `bb eval` also installs only the base library — committed combiners do not
+  resolve in it. Verify language facts from committed sources or a scratch
+  store, not from eval probes.
+- `bb serve` binds with SO_REUSEPORT: two servers on the same port silently
+  load-balance instead of one failing to bind. Check `ss -ltnp` and pick a
+  free port deliberately before serving.
 
 ## Conventions
 
