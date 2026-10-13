@@ -157,6 +157,18 @@ store makes them unbreakable) and what remains discipline.
 
 ## Conventions
 
+### Naming
+
+Never use shorthand or abbreviations in combiner names. Write
+`markdown-write`, `markdown-read`, `markdown->html` — not `md-write`,
+`md-read`, `md-html`. Use `->` for conversions (`markdown->html`), and full
+words everywhere else (`form-decode`, not `frm-dec`).
+
+Names cost nothing: they are erased at normalization (identity is the hash),
+so terseness saves no bytes and no time. Full words are what `bb search`
+matches against, what mappings carry across languages, and what another
+agent reads before `bb show`. Abbreviations only exist to be decoded.
+
 Use [conventional commits](https://www.conventionalcommits.org/) for all
 commit messages:
 
