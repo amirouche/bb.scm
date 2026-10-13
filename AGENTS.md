@@ -162,6 +162,25 @@ store makes them unbreakable) and what remains discipline.
 
 ## Conventions
 
+### Task tracking
+
+All tasks that remain to be done are recorded in `TODO/` as one file
+per task, named `AWA<hex>-<slug>.md` where `<hex>` is a four-digit
+uppercase hexadecimal number (AWA0000, AWA0001, ... AWA0009, AWA000A,
+... AWA000F, AWA0010, ...). Each file contains, in this order:
+
+- `Number:` the AWA identifier (matches the filename)
+- `Title:` the task title
+- `Status:` todo | doing | done
+- `## Abstract` — what the task delivers, in a few sentences
+- `## Context` — why it matters; evidence, examples, prior discussion
+- `## Description` — what to build, concretely, with integration points
+- `## Proposals` — ranked candidate approaches
+
+Do not record new work as free-form bullets; `TODO.md` at the repo root
+is the legacy list — when an item there is picked up, migrate it to an
+AWA file rather than editing it in place.
+
 ### Naming
 
 Never use shorthand or abbreviations in combiner names. Write
