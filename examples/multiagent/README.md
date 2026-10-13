@@ -81,3 +81,33 @@ only its own work with `bb commit --mine`. No agent ever used `--all`.
 ./bb tree roman-decode         # dependency DAG
 cat combiners/*/lineage/*.committed.scm   # author attribution
 ```
+
+## Program equivalence, certified
+
+The two `duration-parse` trees are behaviorally identical but
+structurally different — the hash cannot equate them (that is the Mobius
+open question about program equivalence: can two different trees
+computing the same values be decided equivalent?). In full generality
+the answer is undecidable (Rice's theorem), but the architecture does
+not need to *decide* equivalence to *carry* it: equivalence claims can
+be content-addressed checks that anyone can re-run.
+
+Here the domain is finite, so the certificate is exhaustive. Two
+symmetric checks — `~check-duration-parse-agrees-chars` registered on
+`duration-parse@cdddc0`, `~check-duration-parse-agrees-racer` registered
+on `duration-parse@943a66` — verify that each tree computes the same
+values as the other's implementation on every duration of 0..999
+seconds, in both formatted and bare-number form. Both pass 3/3.
+
+The spectrum the store already occupies:
+
+| Layer | Question | Decidable | Mechanism |
+|---|---|---|---|
+| Alpha-equivalence | same tree modulo names? | yes, exact | the hash (convergence) |
+| Bounded-domain equivalence | same values on a stated finite domain? | yes, by exhaustion | a check like the one above |
+| Decidable-theory equivalence | same function over SMT theories? | yes, per fragment | Z3 (check returns a combiner) |
+| Full extensional equivalence | same values everywhere? | no | carry certificates, don't decide |
+
+The hash proves sameness of code; a check proves sameness of behavior
+on a stated domain. Undecidability is not solved — it is externalized
+into checkable, content-addressed certificates.
