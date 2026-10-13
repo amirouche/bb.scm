@@ -234,6 +234,36 @@ every benchmark row, but it is not the only one:
   the store, and eventually a fine-tune on it, is the path. The other
   five do not get cheaper with use.
 
+### Which is most comprehensible
+
+The answer flips by level:
+
+- **A single function.** The factory wins. A Python function from a
+  coding agent is readable by any programmer today. A Möbius combiner
+  is a gamma with catamorphic patterns, stored as a de Bruijn tree with
+  names erased; only the mapping makes it readable, and only to someone
+  who knows the dialect. A normalized tree is not more legible than
+  Python.
+- **A system of functions.** bb wins by construction. The questions a
+  maintainer asks are: what exists, which version is in use, who made
+  it, from what, what does it guarantee, what breaks if I change it.
+  The store answers each with a command (`search`, `status`, lineage,
+  `tree`, `check`, `caller`). The factory answers them with git blame
+  over regenerated code and a trace store keyed by run ID that nobody
+  rereads; its own description calls the code an opaque intermediate.
+- **A non-programmer.** Neither stack is comprehensible through code.
+  For the family in iril.example, comprehension happens through three
+  things only: the request in their own language, the check sentences
+  with pass or fail beside them, and the author chain saying who asked
+  and who checked. bb can render all three from the store because
+  mappings, checks and lineage are first-class there. The factory has
+  no object to render, since its artifacts are diffs.
+
+Ranking: for reading one piece of code, the factory; for understanding
+what you own and taking it over later, bb; for a grandmother on a
+phone, only bb has anything to show. That last case is the entire bet
+of this task.
+
 ## Description
 
 The shell is itself a combiner DAG built with the workflow it hosts:
