@@ -192,6 +192,48 @@ Python). The last two are where bb wins by construction. The size of
 the first gap is the number that decides whether the thesis is
 practical or only correct.
 
+### Drawbacks that remain after the four steps
+
+Model fluency is the largest drawback and the one that shows up in
+every benchmark row, but it is not the only one:
+
+- **bb and seed are not coupled yet.** bb has its own tree-walking
+  evaluator (`src/bb/evaluator.scm`, gamma and de Bruijn frames); seed
+  is a separate Chez extension with `vau`. The four steps assume agent
+  code runs in seed environments, which means either porting bb's
+  evaluator onto seed or making Möbius a seed dialect. Until then the
+  isolation story belongs to seed alone and the store story to bb
+  alone.
+- **Isolation stays language-level.** Engines bound steps, not memory;
+  environments bound names, not syscalls. Anything reachable through
+  an allowlisted `xeno` procedure (file I/O, sockets) is still
+  reachable. A hostile or confused model still needs an OS boundary
+  around the bb process; the container cost is amortized across many
+  agents, not removed.
+- **One process, one machine.** Engines are cooperative inside a single
+  Chez process. Scale-out means several processes federating by
+  `remote pull`, and there is no scheduler for that. "Thousands of
+  agents" is a cloud-scheduling problem bb has not touched.
+- **No ecosystem to ship into.** The factory targets Python, TypeScript
+  and Java because that is what runs in production. A Möbius closure
+  runs under `bb serve` or through `xeno` into Chez. For iril.example
+  that is fine (the shell is the product); for the general factory
+  comparison the output is not deployable into anyone's existing
+  system.
+- **Contracts cost human effort.** Choosing checks over an LLM judge
+  means every accepted combiner needs a suite that passes a reference
+  and fails a mutant. The rule caught real bugs in the turtle run, but
+  it is the expensive human step the factory skips with fuzzy
+  acceptance.
+- **Model fluency.** Frontier models write Python far better than
+  Möbius; every turtle finding about mis-nesting and base-library
+  confusion is that cost. It is the drawback with the clearest
+  mitigation, because the store is training data in the model's own
+  shape: normalized trees, mappings in several languages, checks, and
+  worklogs saying what each attempt was for. Few-shot retrieval from
+  the store, and eventually a fine-tune on it, is the path. The other
+  five do not get cheaper with use.
+
 ## Description
 
 The shell is itself a combiner DAG built with the workflow it hosts:
