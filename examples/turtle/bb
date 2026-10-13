@@ -1,0 +1,6 @@
+#!/bin/sh
+set -eo pipefail
+root=$(cd "$(dirname "$0")/../.." && pwd)
+args=""
+for a in "$@"; do args="$args \"$a\""; done
+echo "(import (bb cli)) (apply main (list $args))" | scheme --quiet --libdirs "$root/src/"

@@ -1,0 +1,4 @@
+((doc . "turtle-app: HTTP request handler for the turtle playground.\nstate — box (unused; the playground is stateless)\nreq   — alist: \"method\" (symbol), \"path\" (string), \"params\" (alist),\n        \"body\" (raw urlencoded string for POST forms)\n\nRoutes:\n  GET  /                    playground with the selected example\n  GET  /?example=<name>     playground with that preset\n  POST /draw                render the submitted program")
+ (function . "79d05e98330347a2d05ec5aa57b199d116d31fcd2746117e4f658915fb2f08df")
+ (language . "en")
+ (mapping . ((0 . "turtle-app") (1 . "state") (2 . "req") (3 . "status") (4 . "content"))))

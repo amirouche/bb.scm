@@ -1,0 +1,4 @@
+((doc . "turtle-bounds: segment list -> (min-x min-y max-x max-y). The\nbounds cover every endpoint of every segment; a segment is\n(\"segment\" x1 y1 x2 y2 color). No segments yields (0 0 0 0).")
+ (function . "1a98364bd78fc4f0a882eb5233aa8169b9cd27fd21a8dfa65998242aa3943a5c")
+ (language . "en")
+ (mapping . ((0 . "turtle-bounds") (1 . "segments") (2 . "x1") (3 . "y1") (4 . "x2") (5 . "y2") (6 . "bounds") (7 . "x1") (8 . "y1") (9 . "x2") (10 . "y2") (11 . "segments") (12 . "bounds") (13 . "segment") (14 . "segment") (15 . "segment") (16 . "segment") (17 . "left") (18 . "right") (19 . "left") (20 . "right"))))

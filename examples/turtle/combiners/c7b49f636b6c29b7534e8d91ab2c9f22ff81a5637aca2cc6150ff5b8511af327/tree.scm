@@ -1,0 +1,1 @@
+((mobius-primitive-ref 1) ((mobius-bind 1)) ((mobius-primitive-ref 3) ((mobius-primitive-ref 2) "string=?" (mobius-variable 1) "spiral") "color red repeat 36 [ forward 100 right 10 ]" ((mobius-primitive-ref 3) ((mobius-primitive-ref 2) "string=?" (mobius-variable 1) "star") "color blue repeat 5 [ forward 200 right 144 ]" "repeat 4 [ forward 100 right 90 ]")))

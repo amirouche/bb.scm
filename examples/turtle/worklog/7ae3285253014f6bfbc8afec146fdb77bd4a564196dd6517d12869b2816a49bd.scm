@@ -1,0 +1,3 @@
+((combiner . "48020bdda9cf474bc8df96447d70ac06ea9f94f3e4e2c90362158420f294689b")
+ (message . "author: orchestrator | task: arbitrate the turtle-parse race between agent-parser@48020b and agent-racer2@d7e714 | done: both pass ~check-turtle-parse identically; primary re-asserted to @48020b on the canonical-filename ground, @d7e714 remains a first-class alternative")
+ (timestamp . "2026-10-13T20:34:57Z"))

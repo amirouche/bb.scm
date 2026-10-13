@@ -1,0 +1,4 @@
+((doc . "turtle-parse: token list -> command tree.\n\nA single stack walk over the flat token list, so no mutual\nrecursion is needed. The stack holds frames (count . parent-acc):\na \"repeat\" count followed by \"[\" pushes one and starts a fresh\naccumulator; \"]\" pops it and splices (\"repeat\" n children)\ninto the parent accumulator. Unknown words, stray numbers and\nbrackets, and commands missing their argument parse to\n(\"error\" word) values instead of raising; the walk consumes\nexactly the offending token so the rest still parses.")
+ (function . "d7e7148ee8e7ae0c7ab77a8b2151fc1ed1ffc3537dc9d8c9686259fe245b3ac0")
+ (language . "en")
+ (mapping . ((0 . "turtle-parse") (1 . "tokens") (2 . "tokens") (3 . "stack") (4 . "acc") (5 . "token") (6 . "rest") (7 . "argument") (8 . "tail"))))

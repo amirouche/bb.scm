@@ -1,0 +1,4 @@
+((doc . "turtle-segments->svg: segment list -> SVG document string. The\nviewBox is \"min-x min-y width height\" computed from turtle-bounds;\ny is flipped at render time because SVG y grows south while turtle\ny grows north: render-y = (min-y + max-y) - y, which keeps every\npoint inside the viewBox. Integer-valued numbers render as\nintegers. Each segment renders as a line element carrying its\ncolor as stroke.")
+ (function . "8e70307b26dfeceac5f2f4806771e1618294665cedc8ed9e271fb0b8dde2cdbe")
+ (language . "en")
+ (mapping . ((0 . "turtle-segments->svg") (1 . "segments") (2 . "segment") (3 . "x1") (4 . "y1") (5 . "x2") (6 . "y2") (7 . "color") (8 . "segments") (9 . "y") (10 . "segment") (11 . "segment") (12 . "segment") (13 . "segment") (14 . "number") (15 . "segment"))))

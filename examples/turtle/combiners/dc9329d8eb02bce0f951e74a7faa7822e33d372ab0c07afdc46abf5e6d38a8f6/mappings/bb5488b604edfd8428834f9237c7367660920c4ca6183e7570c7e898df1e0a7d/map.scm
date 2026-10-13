@@ -1,0 +1,4 @@
+((doc . "turtle-tokenize: turn turtle program text into a token list.\nWhitespace (space, newline, tab, carriage return) separates tokens\nand is skipped; \"[\" and \"]\" are single tokens of their own; a run\nof digits makes a number token; any other run makes a word token.\nTokens are built via turtle-token-make so the shapes match the\nfrozen data shape: (\"word\" w), (\"number\" n), (\"open\"), (\"close\").")
+ (function . "dc9329d8eb02bce0f951e74a7faa7822e33d372ab0c07afdc46abf5e6d38a8f6")
+ (language . "en")
+ (mapping . ((0 . "turtle-tokenize") (1 . "text") (2 . "index") (3 . "start") (4 . "tokens") (5 . "char") (6 . "start") (7 . "end") (8 . "tokens") (9 . "tokens") (10 . "acc") (11 . "start") (12 . "end") (13 . "start") (14 . "end") (15 . "char") (16 . "char") (17 . "index"))))

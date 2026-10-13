@@ -19,3 +19,6 @@ submodules/letloop/local/
 dist/
 bb-*-linux.tar.gz
 bb-*-linux.tar.gz.sha256
+
+# orchestrator scratch store (sanity scaffolding, never part of the DAG)
+examples/turtle/scratch/

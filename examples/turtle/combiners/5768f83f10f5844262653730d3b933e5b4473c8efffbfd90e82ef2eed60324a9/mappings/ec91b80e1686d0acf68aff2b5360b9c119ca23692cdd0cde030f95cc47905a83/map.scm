@@ -1,0 +1,4 @@
+((doc . "notes-editor: note editor fragment, with optional rendered preview.\n(notes-editor MODE FOLDER ID TITLE BODY PREVIEW FOLDERS)\n  MODE \"new\" — creation form (folder select, no id).\n  MODE \"edit\" — save form (hidden id, folder fixed).\n  PREVIEW — rendered markdown shown above the editor, \"\" for none.\nThe Preview button uses HTML5 formaction/formmethod so the same form\nposts to /preview without any JavaScript.")
+ (function . "5768f83f10f5844262653730d3b933e5b4473c8efffbfd90e82ef2eed60324a9")
+ (language . "en")
+ (mapping . ((0 . "notes-editor") (1 . "mode") (2 . "folder") (3 . "id") (4 . "title") (5 . "body") (6 . "preview") (7 . "folders"))))

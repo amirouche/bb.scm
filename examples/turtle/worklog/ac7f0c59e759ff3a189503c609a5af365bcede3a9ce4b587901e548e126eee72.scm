@@ -1,0 +1,3 @@
+((combiner . "dc9329d8eb02bce0f951e74a7faa7822e33d372ab0c07afdc46abf5e6d38a8f6")
+ (message . "author: agent-lexing | task: implement turtle-tokenize (program text -> token list) per CONTRACTS.md | done: single combiner with internal recursive defines; tokens built via turtle-token-make; bb check turtle-tokenize@dc9329 against ~check-turtle-tokenize prints 1 check, 1 passed")
+ (timestamp . "2026-10-13T20:18:21Z"))
