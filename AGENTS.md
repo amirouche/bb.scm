@@ -169,6 +169,17 @@ so terseness saves no bytes and no time. Full words are what `bb search`
 matches against, what mappings carry across languages, and what another
 agent reads before `bb show`. Abbreviations only exist to be decoded.
 
+Procedure names follow the type-name-verb or type-name-verb-complement
+pattern, read left to right: the domain type first, then the object it
+works on, then the verb, then an optional complement — `store-load-combiner`,
+`notes-count-folder`, `form-decode-chars`, `name-environment-extend`
+(compound type names are fine). Accessors may end in the returned noun
+(`store-combiner-tree-path`), mutators end in `!` (`store-mapping!`),
+predicates in `?` (`notes-name-ok?`).
+
+Variables holding objects are plain nouns — `folders`, `handler`, `state`,
+`body`, `note-entry` — never verb phrases.
+
 Use [conventional commits](https://www.conventionalcommits.org/) for all
 commit messages:
 
