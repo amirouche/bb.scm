@@ -137,6 +137,11 @@ store makes them unbreakable) and what remains discipline.
   committed combiners — base-library names (`not`, `list`, ...) do not
   resolve at normalization time.
 - Small combiners; `bb caller` measures any change's blast radius.
+- Racing the same combiner name between agents: the store keeps both
+  identities (`name@hashA` / `name@hashB`), but the flat source file is
+  shared — last writer wins at the filesystem. Author same-name combiners
+  in per-agent source files (e.g. `duration-parse-racer.en.scm`); the
+  store arbitrates identity, the filesystem does not.
 
 ### Promotion
 
