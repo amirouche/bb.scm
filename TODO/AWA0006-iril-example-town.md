@@ -335,6 +335,69 @@ Pages are built against literal fixtures (a hand-written request, a
 hand-written author chain) so the renderer agent never waits on the
 factory, as the turtle renderer never waited on the runner.
 
+### Factory shapes: A (subprocess) then B (in-process operatives)
+
+**Shape A — the spike.** What the turtle run did. The shell triggers a
+coding agent (`claude -p` with the task record as brief and its own
+`BB_AUTHOR`). The agent has bash and the bb CLI: it edits a per-agent
+source file, runs `bb add`, `bb add --check`, `bb check`, commits with
+`commit --mine` and writes the worklog entry. The shell polls
+`bb status` and `bb check` for the outcome and renders it. Works
+today; the agent is fluent in this loop because it is the factory
+stack's own. Cost: the agent has a shell, so isolation is whatever
+container it runs in, and the store sees results, not attempts.
+
+**Shape B — the end state.** The shell, the harness and the store live
+in one Chez process. The shell imports the bb libraries directly
+(store, evaluator, checks, serve already run in-process). The
+orchestrator is an operative: it calls the model over HTTP, receives
+text, reads it into a tree, evaluates it in a restricted environment
+under fuel, runs the checks, and stages through the store library
+under the agent's author. The model never has bash; every tool it gets
+is an operative the orchestrator exposes (read a combiner, search the
+store, propose a tree, run a check). The only thing the model can do
+is return text, which is where the isolation gain becomes real, and
+every attempt (not only the accepted one) becomes a record with an
+author and a reason.
+
+```scheme
+(define assign
+  (vau (task . contract) env
+    (let* ((source  (model-ask (brief task contract)))
+           (tree    (read-tree source))
+           (sandbox (environment-restrict env allowlist))
+           (result  (engine-run fuel (lambda () (eval tree sandbox)))))
+      (if (checks-pass? result contract)
+          (store-stage! tree agent-author)
+          (assign-retry task contract result)))))
+```
+
+A check is an operative too: it receives the sentence and the
+expression unevaluated, renders the sentence without evaluating
+anything, and evaluates the expression later in the agent's sandbox
+under fuel, reporting pass or fail beside the sentence. No separate
+test DSL.
+
+What stands between A and B:
+
+- The model call: `src/bb/http.scm` builds a curl command line, so
+  even the API call shells out today. In-process needs the letloop TLS
+  stack listed in AGENTS.md, or a thin `xeno` into it.
+- The agentic loop: `claude -p` gives retries, error reading and
+  multi-step editing for free. In B the orchestrator provides that
+  loop itself: on a failed check, feed the failure back, bound the
+  retries, keep every attempt in lineage. This is the real build of
+  step 4 in Context.
+- The coupling: Möbius has gamma and lambda but no `vau`. Either
+  Möbius grows an operative primitive, or the orchestrator is written
+  in seed and treats bb's store (a directory any Chez program can
+  read) as its substrate. The second is the shorter path.
+
+Sequence: A gets a family building tools with agents known to work;
+B makes the shell self-contained and the sandbox claim true. Build A,
+then replace the agent invocation with B without changing the pages,
+data shapes or store layout.
+
 ### Integration points in bb
 
 - `server.scm`: replace the single bearer key with a member table so a
@@ -342,10 +405,8 @@ factory, as the turtle renderer never waited on the runner.
   receives the member with the request. Every `bb add`, `commit`,
   `worklog`, `review` the shell performs on a member's behalf runs
   under that member's `BB_AUTHOR`.
-- Agent invocation: the factory shells out to a coding agent (one
-  `BB_AUTHOR` per agent, `commit --mine`, worklog rule) with the task
-  record as its brief; the shell polls `bb status` and `bb check` for
-  the result. No agent ever runs `commit --all`.
+- Agent invocation: shape A first, shape B as the end state (see
+  "Factory shapes" below). No agent ever runs `commit --all`.
 - Author chain: `asked-by` is written into the worklog message by the
   shell ("asked: <member> | author: <agent> | task: ... | done: ...")
   until AWA0002 gives the worklog a structured author field.
@@ -375,10 +436,12 @@ factory, as the turtle renderer never waited on the runner.
 ## Proposals
 
 1. **Build the shell as a bb example first, per-member login, data as
-   zero-arity combiners** — `examples/iril/`, contracts first, agents
-   in parallel, exactly the turtle process one notch up. Needs the
-   `server.scm` member table and a data-tree probe; everything else is
-   combiners. Recommended.
+   zero-arity combiners, shape A then B** — `examples/iril/`,
+   contracts first, agents in parallel, exactly the turtle process one
+   notch up. Needs the `server.scm` member table and a data-tree probe;
+   everything else is combiners. Agents are invoked as subprocesses
+   (shape A) until the in-process operative orchestrator (shape B)
+   replaces that one edge. Recommended.
 2. **Keep single `--api-key`, carry member identity in a form field** —
    no server change; identity is self-declared and unenforced, so the
    author chain is weaker. Acceptable as a spike to validate the pages
